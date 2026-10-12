@@ -1,3 +1,5 @@
+import type { ToolSet } from 'ai'
+
 /**
  * 编辑器 Agent 的项目编排层。
  *
@@ -146,6 +148,14 @@ export interface RunDirectEditAgentOptions<
   readonly temperature?: number
   readonly systemPrompt?: string
   readonly maxAutoFixIterations?: number
+  /**
+   * Host-supplied extra tools (Agent Skills reader, MCP tools, …) available to
+   * the model alongside the operation tools, plus the system context describing
+   * them. They extend the scene's capability surface without changing the
+   * validated operation vocabulary.
+   */
+  readonly extraTools?: ToolSet
+  readonly extraSystemContext?: string
   readonly onEvent?: (event: DirectEditAgentEvent<EditorAiSnapshotByCapability[C]>) => void
 }
 
@@ -623,6 +633,8 @@ export async function runDirectEditAgent<C extends EditorAiExecutionCapability>(
     temperature: options.temperature,
     systemPrompt: options.systemPrompt,
     maxAutoFixIterations: options.maxAutoFixIterations,
+    extraTools: options.extraTools,
+    extraSystemContext: options.extraSystemContext,
   })
   return runDirectEditAgentWithRuntime(options, runtime)
 }

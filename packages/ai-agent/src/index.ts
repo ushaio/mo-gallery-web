@@ -51,3 +51,5 @@ export {
   type RunDirectEditAgentResult,
   type RunEditorAgentOptions,
 } from './agent'
+
+export { createDirectEditToolSet } from './runtime/vercel-ai/host-tools'

@@ -8,8 +8,13 @@
 .milkdown-block-style { min-width: 0; margin: 1em 0; }
 .milkdown-block-style > :first-child { margin-top: 0; }
 .milkdown-block-style > :last-child { margin-bottom: 0; }
+/* 图片的对齐在容器上（老文档就是这个形状：`:::block-style{align=right}` 包着一张图）。
+   三条都写全左右外边距 —— 只写一侧会让另一侧落回别的规则，两张规则叠起来互相打架
+   （`margin-left:auto` 配一条 `margin-inline:auto` 的兜底 = 居中，右对齐就没了）。
+   同样只对只读渲染生效；编辑器里要做在 .milkdown-media-node 外层上，见 style.css。 */
+.milkdown-block-style[data-milkdown-align="left"] .milkdown-media-image { margin-left: 0; margin-right: auto; }
 .milkdown-block-style[data-milkdown-align="center"] .milkdown-media-image { margin-inline: auto; }
-.milkdown-block-style[data-milkdown-align="right"] .milkdown-media-image { margin-left: auto; }
+.milkdown-block-style[data-milkdown-align="right"] .milkdown-media-image { margin-left: auto; margin-right: 0; }
 .milkdown-content p, .milkdown-content ul, .milkdown-content ol, .milkdown-content blockquote, .milkdown-content pre { margin: 1em 0; }
 .milkdown-content h1, .milkdown-content h2, .milkdown-content h3, .milkdown-content h4, .milkdown-content h5, .milkdown-content h6 { font-weight: 650; line-height: 1.4; margin: 1.5em 0 .6em; }
 .milkdown-content h1 { font-size: 2em; }
@@ -73,10 +78,26 @@ figure.milkdown-media-image:has(.milkdown-media-photo img),
 figure.milkdown-media-upload:not(.milkdown-media-placeholder):has(.milkdown-media-photo img) { width: fit-content; }
 figure.milkdown-media-image:has(.milkdown-media-photo img) > .milkdown-media-photo,
 figure.milkdown-media-upload:not(.milkdown-media-placeholder):has(.milkdown-media-photo img) > .milkdown-media-photo { width: fit-content; }
+/* 单图卡自己的横向对齐（`::media{align="left|right"}`；指令里没写就是没写过）。
+   ⚠️ 这几条只对**只读渲染**（MilkdownContent）生效：那边的 figure 直接躺在满栏的父块里。
+   编辑器里 figure 外面还套了一层 .milkdown-media-node，且那层已经收成 fit-content
+   （见 style.css），卡片本体的 auto 外边距没有空隙可分 —— 编辑器侧的对齐规则在 style.css。
+   三条规则由弱到强，对应三种来源：
+     1. 卡上没写 align，外层 block-style 也没表态 ⇒ 居中 —— 这就是「默认居中」；
+     2. 外层 block-style 表了态 ⇒ 跟随它（上面那三条，特异性更高）；
+     3. 卡自己写了 align（用户在媒体设置里显式选过）⇒ 以卡为准（再高一格）。
+   卡片在上面 `figure:has(img)` 那条规则里收成了 fit-content，宽度跟着图片走，
+   所以「贴左 / 居中 / 贴右」只需要外边距；竖直方向沿用 .milkdown-media 的 20px。
+   拿不到图的中性卡片仍满栏宽，外边距对它没有可见影响。 */
+.milkdown-media-image:not([data-media-align]) { margin-inline: auto; }
+figure.milkdown-media.milkdown-media-image[data-media-align="left"] { margin-left: 0; margin-right: auto; }
+figure.milkdown-media.milkdown-media-image[data-media-align="center"] { margin-inline: auto; }
+figure.milkdown-media.milkdown-media-image[data-media-align="right"] { margin-left: auto; margin-right: 0; }
 /* 拼图：列数由 MediaCard 按张数内联给出（2 张双列 / 3 张三列 / 4 张 2×2 / 5-6 张三列…），
    这里的 2 列只是兜底。gap 收紧到 4px，几格才像「拼」成的一整张图。 */
 .milkdown-media-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
-.milkdown-media-grid .milkdown-media-photo img { width: 100%; aspect-ratio: 4/3; height: 100%; object-fit: cover; }
+.milkdown-media-grid > .milkdown-media-photo { min-height: 0; overflow: hidden; }
+.milkdown-media-grid .milkdown-media-photo img { width: 100%; aspect-ratio: auto; height: 100%; max-height: none; object-fit: cover; }
 .milkdown-media-grid .milkdown-media-photo:only-child { grid-column: 1 / -1; }
 /* 拼图里还没上传的那一格：格子小，tag 压到角落并缩一号 */
 .milkdown-media-grid .milkdown-media-upload-tag { top: 4px; left: 4px; padding: 1px 6px; font-size: 10px; }
@@ -117,7 +138,8 @@ figure.milkdown-media-upload:not(.milkdown-media-placeholder):has(.milkdown-medi
 .milkdown-media-actions button, .milkdown-media .milkdown-media-open { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; color: var(--muted-foreground, #777); background: transparent; cursor: pointer; }
 .milkdown-media-actions button:hover, .milkdown-media .milkdown-media-open:hover { background: var(--muted, #f3f4f6); color: var(--foreground, #262626); }
 .milkdown-media-actions button:focus-visible, .milkdown-media a:focus-visible { outline: 2px solid var(--primary, #2563eb); outline-offset: -2px; }
-.milkdown-media-overlay { position: absolute; top: 10px; right: 10px; z-index: 2; padding: 3px; border-radius: 8px; background: var(--card, #fff); border: 1px solid var(--border, #ddd); box-shadow: 0 2px 12px #0001; opacity: 0; transition: opacity 120ms ease; }
+/* 一排按钮（编辑器里是对齐入口 + 编辑 / 移除），默认的块级排布会把它们竖着摞起来 */
+.milkdown-media-overlay { position: absolute; top: 10px; right: 10px; z-index: 2; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 8px; background: var(--card, #fff); border: 1px solid var(--border, #ddd); box-shadow: 0 2px 12px #0001; opacity: 0; transition: opacity 120ms ease; }
 .milkdown-media:hover .milkdown-media-overlay, .milkdown-media:focus-within .milkdown-media-overlay, .ProseMirror-selectednode .milkdown-media-overlay { opacity: 1; }
 @media (hover: none) { .milkdown-media-overlay { opacity: 1; } }
 .milkdown-spin { animation: milkdown-spin 1s linear infinite; }

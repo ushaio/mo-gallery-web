@@ -47,9 +47,20 @@ export interface VercelAiDirectEditAgentRuntimeOptions {
   maxSteps?: number
   systemPrompt?: string
   maxAutoFixIterations?: number
+  /**
+   * Host-supplied extra tools (Agent Skills reader, MCP tools, …). The model may
+   * call them inside the same loop as the operation tools, so a scene can bring
+   * its own capabilities without the package hardcoding a workflow. Names that
+   * collide with a built-in tool are dropped: the operation vocabulary stays
+   * authoritative and cannot be shadowed from outside.
+   */
+  extraTools?: ToolSet
+  /** Host-supplied system context appended after the package instructions. */
+  extraSystemContext?: string
   /** Package-internal test/custom runtime injection; intentionally not root-exported. */
   languageModel?: LanguageModel
 }
+
 
 type ToolFailureCode =
   | 'invalid_tool_input'
@@ -444,6 +455,21 @@ function isSuccessfulWarningOutput(value: unknown): value is { ok: true; warning
   return Boolean(value && typeof value === 'object' && (value as { ok?: unknown }).ok === true && (value as { warning?: unknown }).warning)
 }
 
+/**
+ * Merges host-supplied tools over the built-in operation tools. Built-in names
+ * always win, so an extension can never shadow the validated operation
+ * vocabulary; collisions are dropped instead of failing the whole turn.
+ */
+function mergeExtraTools(base: ToolSet, extra: ToolSet | undefined): ToolSet {
+  if (!extra) return base
+  const merged: ToolSet = { ...base }
+  for (const [name, definition] of Object.entries(extra)) {
+    if (name in merged || definition === undefined) continue
+    merged[name] = definition
+  }
+  return merged
+}
+
 export class VercelAiDirectEditAgentRuntime implements DirectEditAgentRuntime<StructuredEditorSnapshot> {
   private readonly options: VercelAiDirectEditAgentRuntimeOptions
 
@@ -480,15 +506,15 @@ export class VercelAiDirectEditAgentRuntime implements DirectEditAgentRuntime<St
       const runtimeTools = directEdit
         ? createRuntimeTools(localTask, localTask.snapshot.capability, maxAutoFixIterations)
         : undefined
-      const tools = runtimeTools?.tools ?? {}
+      const tools = mergeExtraTools(runtimeTools?.tools ?? {}, this.options.extraTools)
       const agent = new ToolLoopAgent({
         model: this.options.languageModel
           ?? createVercelAiLanguageModel(this.options.endpoint, this.options.model),
-        ...([modelInput.instructions, this.options.systemPrompt?.trim()]
+        ...([modelInput.instructions, this.options.systemPrompt?.trim(), this.options.extraSystemContext?.trim()]
           .filter((value): value is string => Boolean(value))
           .length > 0
           ? {
-              instructions: [modelInput.instructions, this.options.systemPrompt?.trim()]
+              instructions: [modelInput.instructions, this.options.systemPrompt?.trim(), this.options.extraSystemContext?.trim()]
                 .filter((value): value is string => Boolean(value))
                 .join('\n\n'),
             }

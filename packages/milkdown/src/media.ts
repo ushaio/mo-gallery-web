@@ -10,10 +10,52 @@ export { safeMediaUrl } from './media-url'
 export const MEDIA_KINDS = ['image', 'gallery', 'video', 'audio', 'link', 'file'] as const
 export type MediaKind = typeof MEDIA_KINDS[number]
 
+/** 单图卡在正文里的横向摆放。 */
+export const MEDIA_ALIGNS = ['left', 'center', 'right'] as const
+export type MediaAlign = typeof MEDIA_ALIGNS[number]
+
+/**
+ * 缺省对齐：居中。
+ *
+ * 选它有两个理由：tiptap 插入图片时就是把它包在一个 `textAlign: 'center'` 的段落里
+ * （见 NarrativeTipTapEditor / useEditorImperativeHandle），迁移过来的图片本来就是居中；
+ * 公众号导出给 img 的基础样式也是 `margin:12px auto`。与两边都对得上，迁移与导出都不必改写。
+ */
+export const DEFAULT_MEDIA_ALIGN: MediaAlign = 'center'
+
+/** 宽松解析：认不出来一律当作「没写」。用于迁移 —— 读不到就不写进指令，交给默认值。 */
+export function parseMediaAlign(value: unknown): MediaAlign | undefined {
+  return typeof value === 'string' && (MEDIA_ALIGNS as readonly string[]).includes(value)
+    ? value as MediaAlign
+    : undefined
+}
+
+/** 归一化：认不出来落到默认居中。渲染侧拿到的永远是一个合法值。 */
+export function normalizeMediaAlign(value: unknown): MediaAlign {
+  return parseMediaAlign(value) ?? DEFAULT_MEDIA_ALIGN
+}
+
+/**
+ * 单图卡**自己写下的**对齐；没写过（或不是单图卡）返回 undefined。
+ *
+ * 刻意不在这里补默认值：缺省居中由渲染侧兜底（CSS 的弱规则），而「指令里没写」与
+ * 「写了 center」对排版不是一回事 —— 没写时那张图还要看外层 `:::block-style{align=…}`
+ * 的表态（老文档里图片的对齐就记在容器上），写了就以卡为准。两者混成一个值，
+ * 外层容器就再也压不动卡片了。
+ *
+ * 写成函数是为了让渲染侧（MediaCard 的 `data-media-align`）、编辑侧（卡片里的对齐入口）与
+ * 序列化侧用同一个口径，不各判一次 kind。
+ */
+export function mediaAlign(media: MediaCardData): MediaAlign | undefined {
+  return media.kind === 'image' ? parseMediaAlign(media.align) : undefined
+}
+
 export interface MediaImage {
   src: string
   alt?: string | null
   photoId?: string
+  /** 拼图格内的裁切焦点（百分比）与缩放倍数。 */
+  crop?: MediaCrop
   /**
    * 拼图（画廊）里的待上传项：并进拼图时保留 uploadId / status，
    * 渲染时按 uploadId 现取本地预览图，上传完成后由编辑器原地换成正式图片。
@@ -23,6 +65,28 @@ export interface MediaImage {
   status?: MediaCardData['status']
 }
 
+export interface MediaCrop {
+  x: number
+  y: number
+  scale: number
+}
+
+export const GALLERY_LAYOUTS = ['grid', 'stack', 'split', 'hero-top', 'hero-left', 'quad'] as const
+export type GalleryLayout = typeof GALLERY_LAYOUTS[number]
+
+export function normalizeGalleryLayout(value: unknown): GalleryLayout {
+  return (GALLERY_LAYOUTS as readonly unknown[]).includes(value) ? value as GalleryLayout : 'grid'
+}
+
+function normalizeCrop(value: unknown): MediaCrop | undefined {
+  const input = record(value)
+  const x = Number(input.x)
+  const y = Number(input.y)
+  const scale = Number(input.scale)
+  if (![x, y, scale].every(Number.isFinite)) return undefined
+  return { x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)), scale: Math.max(1, Math.min(3, scale)) }
+}
+
 export interface MediaCardData {
   kind: MediaKind | 'upload'
   src?: string
@@ -30,8 +94,11 @@ export interface MediaCardData {
   caption?: string
   photoId?: string
   images?: MediaImage[]
+  layout?: GalleryLayout
   embed?: MediaEmbedData
   width?: number
+  /** 单图卡的横向对齐（left / center / right），缺省即居中。仅 kind='image' 有意义。 */
+  align?: MediaAlign
   thumbnail?: string
   uploadId?: string
   /**
@@ -88,6 +155,9 @@ export function normalizeMedia(value: unknown): MediaCardData {
     photoId: text(input.photoId),
     ...(embed ? { embed } : {}),
     ...(kind === 'image' && Number.isFinite(width) && width > 0 && width <= 4096 ? { width: Math.round(width) } : {}),
+    // 只保留**写得出来**的对齐值：认不出来的（含没写）一律留空，让渲染侧按「没写过」处理
+    // —— 缺省居中，同时仍然跟随外层 block-style 的对齐（见 mediaAlign 的注释）。
+    ...(kind === 'image' && parseMediaAlign(input.align) ? { align: parseMediaAlign(input.align) } : {}),
     ...(safeMediaUrl(text(input.thumbnail)) ? { thumbnail: safeMediaUrl(text(input.thumbnail)) } : {}),
     ...(Array.isArray(input.images) ? {
       images: input.images.map((entry): MediaImage => {
@@ -97,6 +167,7 @@ export function normalizeMedia(value: unknown): MediaCardData {
           src: safeMediaUrl(text(image.src)),
           alt: text(image.alt),
           photoId: text(image.photoId),
+          ...(normalizeCrop(image.crop) ? { crop: normalizeCrop(image.crop) } : {}),
           // 拼图里的待上传项没有 src，靠 uploadId 现取预览图；三态与占位卡同口径
           ...(uploadId ? {
             uploadId,
@@ -105,6 +176,7 @@ export function normalizeMedia(value: unknown): MediaCardData {
         }
       }).filter((image) => image.src || image.photoId || image.uploadId),
     } : {}),
+    ...(kind === 'gallery' ? { layout: normalizeGalleryLayout(input.layout) } : {}),
     ...(kind === 'upload' ? {
       uploadId: text(input.uploadId),
       // 三态都要保留：历史上只区分 failed / 其余（当作 uploading），
@@ -120,9 +192,18 @@ export function mediaToAttributes(value: MediaCardData): Record<string, string> 
   for (const key of ['src', 'title', 'caption', 'photoId', 'uploadId', 'status', 'thumbnail'] as const) {
     if (media[key]) attrs[key] = media[key]
   }
-  if (media.kind === 'gallery') attrs.images = JSON.stringify(media.images ?? [])
+  if (media.kind === 'gallery') {
+    attrs.images = JSON.stringify(media.images ?? [])
+    attrs.layout = normalizeGalleryLayout(media.layout)
+  }
   if (media.embed) attrs.embed = JSON.stringify(media.embed)
   if (media.width) attrs.width = String(media.width)
+  // 卡片**自己写下的**对齐原样写回。normalizeMedia 从不凭空造值（认不出的、没写的都留空），
+  // 所以能走到这里的一定是用户显式选过的 —— 包括显式选的「居中」。
+  // 显式居中必须写出来：「没写过」要跟随外层 `:::block-style{align=…}`，显式居中要压过它，
+  // 两者语义不同；存的时候吞掉 center，回读就变成「随容器」，用户改过的对齐会自己变回去。
+  const align = mediaAlign(media)
+  if (align) attrs.align = align
   return attrs
 }
 
@@ -152,6 +233,54 @@ export function mediaGalleryEntry(media: MediaCardData): MediaImage {
     photoId: media.photoId || undefined,
     ...(media.kind === 'upload' && media.uploadId ? { uploadId: media.uploadId, status: media.status ?? 'pending' } : {}),
   }
+}
+
+/** 拼图里的一格靠什么认出来：photoId → uploadId → src（都拿不到就是空串）。 */
+export function galleryEntryKey(image: MediaImage): string {
+  return image.photoId || image.uploadId || image.src || ''
+}
+
+/**
+ * 拖动「拼图里的一格」（而不是整张卡）时写在 dataTransfer 上的类型。
+ *
+ * 类型本身就是约定：带它 = 拖的是某一格，落点语义全部交给 `media-merge.ts` 的 handleDrop
+ * （并进别的卡 / 在同一张拼图里调序 / 拿出来成独立图片卡）；payload 是一份 JSON
+ * （源卡位置 + 第几格 + `galleryEntryKey`）。
+ */
+export const MEDIA_TILE_DRAG_TYPE = 'application/x-mo-media-tile'
+
+/** 拼图里的一格 → 独立的单图卡（把这一格拖出拼图时用；`mediaGalleryEntry` 的逆向）。 */
+export function mediaFromGalleryEntry(image: MediaImage): MediaCardData {
+  // 还没上传的格子：用 uploadId 还原成占位卡，上传完成后编辑器仍会原地换成正式图片
+  if (!image.src && image.uploadId) return { kind: 'upload', title: image.alt ?? '', uploadId: image.uploadId, status: image.status ?? 'pending' }
+  return { kind: 'image', src: image.src, title: image.alt ?? '', photoId: image.photoId ?? '' }
+}
+
+/** 拼图被拆掉一格之后的样子。 */
+export interface GalleryTileSplit {
+  /** 被拆下来的那一格，按独立媒体卡返回。 */
+  extracted: MediaCardData
+  /** 剩下的部分：还有两格以上仍是拼图，只剩一格退化成单图卡，一格不剩返回 null（整卡删掉）。 */
+  remainder: MediaCardData | null
+}
+
+/**
+ * 把拼图里的第 `index` 格拆出来。
+ *
+ * 标题 / 说明留在原来那张卡上：拖走一格只是排版变化，不该顺手指改这段内容的文案。
+ * 返回 null 表示「这不是拼图 / 没有这一格」，调用方什么都不该做。
+ */
+export function splitGalleryTile(media: MediaCardData, index: number): GalleryTileSplit | null {
+  const images = media.kind === 'gallery' ? media.images ?? [] : []
+  if (!Number.isInteger(index) || index < 0 || index >= images.length) return null
+  const rest = images.filter((_, at) => at !== index)
+  const remainder: MediaCardData | null = rest.length > 1
+    ? { kind: 'gallery', title: media.title, caption: media.caption, images: rest }
+    : rest.length === 1
+      // 只剩一格：拼图这个形态不再成立，退回单图卡（拼图上的标题 / 说明接着用）
+      ? { ...mediaFromGalleryEntry(rest[0]), title: media.title || rest[0].alt || '', caption: media.caption }
+      : null
+  return { extracted: mediaFromGalleryEntry(images[index]), remainder }
 }
 
 /**
@@ -222,6 +351,15 @@ export function decorateMilkdownMediaForWechat(root: HTMLElement) {
   root.querySelectorAll<HTMLElement>('figure[data-media-kind]').forEach((figure) => {
     appendInlineStyle(figure, WECHAT_MEDIA_FIGURE_STYLE)
     figure.querySelectorAll<HTMLElement>('figcaption').forEach((caption) => appendInlineStyle(caption, WECHAT_MEDIA_CAPTION_STYLE))
+    // 单图卡的对齐：公众号里 img 是 width 由原图决定的块，基础样式已经给了 `margin:12px auto`
+    // （即默认居中），所以只有贴左 / 贴右要在注入之后覆盖左右外边距。class 会被公众号抹掉，
+    // 只能落到内联样式；这里也刻意不动 figcaption —— 图注是一段文字，图片换边不该顺手改它的排版。
+    // 属性缺失即居中（normalizeMediaAlign 的默认值），与渲染侧同一口径
+    const align = normalizeMediaAlign(figure.getAttribute('data-media-align'))
+    if (figure.getAttribute('data-media-kind') === 'image' && align !== DEFAULT_MEDIA_ALIGN) {
+      const image = figure.querySelector<HTMLElement>('img')
+      if (image) appendInlineStyle(image, align === 'right' ? 'margin-left:auto;margin-right:0' : 'margin-left:0;margin-right:auto')
+    }
     if (figure.getAttribute('data-media-kind') !== 'gallery') return
     // 拼图：figure 的直接子 div 是网格容器（覆盖操作层只在编辑器里渲染，复制侧没有）
     const grid = figure.querySelector<HTMLElement>(':scope > div')

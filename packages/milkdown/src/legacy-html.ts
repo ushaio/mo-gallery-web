@@ -21,7 +21,11 @@ function convert(node: HtmlNode, marks: LegacyMark[] = []): LegacyNode[] {
   }]
   if (type === 'story-link-card') return [{ type: 'storyLinkCard', attrs: { storyId: data('StoryId'), url: data('Url'), title: data('Title'), summary: data('Summary'), coverUrl: data('CoverUrl'), date: data('Date') } }]
   if (Object.hasOwn(props, 'dataImageUploadPlaceholder')) return [{ type: 'imageUploadPlaceholder', attrs: { uploadId: data('UploadId'), fileName: data('FileName') } }]
-  if (tag === 'img') return [{ type: 'image', attrs: { ...attrs, src: props.src, alt: props.alt, title: props.title, photoId: data('PhotoId'), width: props.width || css.width } }]
+  // 图片自身的横向对齐有三个来源，统一归到 `align`：`data-align`（老 web 版写在 img 上）、
+  // HTML 的 `align` 属性、以及 img 自己的 `style="text-align:…"`。上面那行把它们并进了
+  // textAlign，那对图片是错的 —— 图片是 inline 节点，text-align 属于它的**父块**（父块自己
+  // 会走 aligned()），留在这里只会让同一张图既被包进 block-style 又带着自己的对齐。
+  if (tag === 'img') return [{ type: 'image', attrs: { ...attrs, textAlign: undefined, align: data('Align') || props.align || css['text-align'], src: props.src, alt: props.alt, title: props.title, photoId: data('PhotoId'), width: props.width || css.width } }]
   if (tag === 'audio' || tag === 'video') {
     const source = node.children.find((child) => child.type === 'element' && child.tagName === 'source')
     return [{ type: tag, attrs: { ...attrs, src: props.src || (source?.type === 'element' ? source.properties.src : undefined), title: props.title, poster: props.poster } }]

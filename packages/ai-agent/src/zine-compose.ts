@@ -224,14 +224,24 @@ captions, cover prose or document operations. Every proposal must include at lea
 In each proposal every input asset must occur exactly once across all sections and excludedAssets:
 no omissions, duplicate use, overlap or unknown IDs. Concerns may reference only known, nonduplicate IDs.
 
+Write every text field for a person who is looking at the photos in the interface. Never repeat raw asset IDs,
+hex names, file names, JSON keys or field names in summary, titles, concept, tradeoff, rationale,
+observations, reasons or questions; point at a specific photo by its 1-based number only when a sentence
+truly needs to single it out. Do not restate the style keyword (airy or compact) inside rationale: the style
+field already labels the section, so explain what the pacing does to the sequence instead. Give a section a
+short conceptual label of a few words, never a plate, page, section or ordinal prefix such as "Plate 1"
+(the interface numbers sections itself). summary is a short plain-language overview of the whole review, at
+most one short paragraph: no markdown, headings, bullets or numbered lists, and no plate-by-plate listing of
+what each section holds, because the sections already carry that detail.
+
 Output ONLY one JSON object, no markdown, commentary or additional fields, using this exact schema:
 {
-  "summary": "review and planning summary",
+  "summary": "short plain-language overview of this review, one short paragraph",
   "limitations": ["evidence or capability limitations"],
   "concerns": [{"assetIds": ["known-id"], "observation": "evidence, source and confidence", "reason": "why it matters", "question": "confirmation question"}],
   "proposals": [
     {"id": "stable-unique-id", "title": "plan label", "concept": "creative approach", "tradeoff": "benefit and cost",
-     "sections": [{"title": "section label", "rationale": "why this order/layout", "assetIds": ["known-id"], "style": "airy"}],
+     "sections": [{"title": "short conceptual label, no ordinal", "rationale": "why this order/layout, in prose without raw IDs", "assetIds": ["known-id"], "style": "airy"}],
      "excludedAssets": [{"assetId": "another-known-id", "reason": "conditional exclusion rationale"}]}
   ],
   "nextQuestions": ["questions needed before confirmation"]
