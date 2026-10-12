@@ -245,7 +245,7 @@ export default function LogsPage() {
   function handleTabClick(tab: 'blog' | 'stories' | 'drafts') {
     const now = Date.now()
     if (lastClickRef.current.tab === tab && now - lastClickRef.current.time < 300) {
-      // 双击 - 刷新对应标签页
+      // 双击 - 刷新对应标签页（公众号页签＝强制与微信同步一次）
       if (tab === 'drafts') {
         loadDrafts()
       } else if (tab === 'stories') {
@@ -260,8 +260,9 @@ export default function LogsPage() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* 子标签页导航 */}
-      <div className={`${(isStoriesEditing && activeSubTab === 'stories') || isImmersiveMode ? 'hidden' : 'flex'} space-x-1 border-b border-border px-8 flex-shrink-0`}>
+      {/* 子标签页导航：与下方内容区之间不画满宽分隔线（整条线去掉，页面更一体化；
+          `/admin/upload` 与官网 `/console` 同步）。 */}
+      <div className={`${(isStoriesEditing && activeSubTab === 'stories') || isImmersiveMode ? 'hidden' : 'flex'} space-x-1 px-8 flex-shrink-0`}>
         <AdminButton
           onClick={() => handleTabClick('stories')}
           adminVariant="tab"
@@ -297,6 +298,8 @@ export default function LogsPage() {
             </span>
           )}
         </AdminButton>
+        {/* 公众号页签（公众号图文：草稿/已发布）暂时隐藏：接口与页面组件都留着，
+            恢复时按 CHANGELOG 第 13 条的说明把门控 + 按钮 + 内容区加回即可 */}
       </div>
 
       {/* 子标签页内容 */}

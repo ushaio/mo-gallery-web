@@ -36,11 +36,15 @@
   --mgac-radius-sm: 9px;
   --mgac-rail-width: 248px;
   --mgac-rail-width-collapsed: 76px;
-  --mgac-topbar-height: 52px;
+  --mgac-topbar-height: 44px;
   --mgac-scrim: rgba(0, 0, 0, 0.32);
 
   color: var(--mgac-text);
-  font-family: var(--font-sans, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);
+  /* 宿主 `--font-sans` 通常只是一份品牌字族、不带通用兜底（web 的 next/font 变量
+     就是 `Montserrat, "Montserrat Fallback"`），直接拿它当字族会让中日韩字形掉到
+     浏览器「最后兜底」字体——比宿主页面正文（body 带 ui-sans-serif, system-ui,
+     sans-serif 兜底）明显偏细。故对外壳一律补上通用字族。 */
+  font-family: var(--font-sans, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 14px;
   line-height: 1.5;
   letter-spacing: normal;
@@ -95,7 +99,10 @@
   flex-direction: column;
   width: var(--mgac-rail-width);
   height: 100vh;
-  padding: 14px 12px;
+  /* 顶部不留内边距：有顶块（railHeader）时由顶块自己撑满到栏顶，
+     才能与 `.mgac-top`（顶栏）顶端对齐；无顶块时由 `.mgac-rail-nav`
+     的 padding-top 补回同一段间距。 */
+  padding: 0 12px 14px;
   overflow-x: hidden;
   overflow-y: auto;
   background: var(--mgac-surface);
@@ -104,8 +111,22 @@
   transition: width 0.26s ease, transform 0.26s ease;
 }
 
+/* 侧栏顶块（站点标题 / 品牌）与顶栏同高、共用一条分隔线：两栏顶端严格对齐
+   （official `/console` 侧栏品牌块与主区页头同为 h-14 的「两栏顶端保持对齐」同口径）。
+   负的外边距只用于让分隔线贯穿整栏宽度，内容仍缩进到与导航项同一左边界。 */
 .mgac-rail-head {
-  padding: 4px 8px 14px;
+  display: flex;
+  align-items: center;
+  min-height: var(--mgac-topbar-height);
+  margin-inline: -12px;
+  padding: 6px 20px;
+  border-bottom: 1px solid var(--mgac-border);
+}
+
+/* 顶块内的标题照着顶栏标题的规矩收缩（宿主用 truncate 时仍能出省略号） */
+.mgac-rail-head > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .mgac-rail-nav {
@@ -113,6 +134,7 @@
   flex: 1 1 auto;
   flex-direction: column;
   gap: 4px;
+  padding-top: 14px;
 }
 
 .mgac-rail-item {
@@ -232,6 +254,12 @@
   padding-inline: 10px;
 }
 
+/* 折叠态侧栏窄了 2px，顶块要跟着收，分隔线才仍然贯穿整栏 */
+.mgac.is-collapsed .mgac-rail-head {
+  margin-inline: -10px;
+  padding-inline: 18px;
+}
+
 .mgac.is-collapsed .mgac-rail-label,
 .mgac.is-collapsed .mgac-rail-count {
   max-width: 0;
@@ -248,8 +276,15 @@
   padding-inline: 2px;
 }
 
+/* 纯文字标签在折叠时「收宽 + 透明」，而不是 display:none：标签仍占着行高，
+   底栏按钮 / 行的尺寸就不会因为文字消失而缩一截（官网 /console 的
+   collapsibleTextClass 即此口径；display:none 会让底栏总高差 15px）。 */
 .mgac.is-collapsed .mgac-rail-foot-text {
-  display: none;
+  display: block;
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
 }
 
 .mgac.is-collapsed .mgac-rail-item {
@@ -274,7 +309,7 @@
   justify-content: space-between;
   gap: 12px;
   min-height: var(--mgac-topbar-height);
-  padding: 8px 18px;
+  padding: 6px 18px;
   background: var(--mgac-surface);
   border-bottom: 1px solid var(--mgac-border);
   backdrop-filter: saturate(180%) blur(20px);

@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { MilkdownContent } from '@mo-gallery/milkdown/content'
 import { resolveAssetUrl } from '@/lib/api/core'
+import { sanitizeLegacyHtml } from '@/lib/sanitize-legacy-html'
 import { resolveStoredMediaEmbedInfo } from '@mo-gallery/tiptap-editor/media-embed'
 import type { EditorType, PhotoDto } from '@/lib/api/types'
 import {
@@ -314,7 +315,7 @@ export const StoryRichContent = memo(function StoryRichContent({
   const rootClassName = ['story-rich-content', onPhotoClick ? 'story-rich-content--interactive' : '', className].filter(Boolean).join(' ')
   const resolvedHtml = useMemo(() => {
     if (!isHtmlContent) return null
-    return resolveStoryHtml(content, photoIndex, cdnDomain)
+    return sanitizeLegacyHtml(resolveStoryHtml(content, photoIndex, cdnDomain))
   }, [cdnDomain, content, isHtmlContent, photoIndex])
   const handleContentClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (!onPhotoClick) return

@@ -14,6 +14,7 @@ import {
   recordLoginFailure,
 } from '~/server/lib/login-rate-limit'
 import { createOAuthState, verifyOAuthState } from '~/server/lib/oauth-state'
+import { clientIpFromHeaders } from '~/server/lib/client-ip'
 
 const auth = new Hono<{ Variables: AuthVariables }>()
 
@@ -49,9 +50,7 @@ auth.post('/login', async (c) => {
     }, 403)
   }
 
-  const clientIp = c.req.header('x-forwarded-for')?.split(',')[0]?.trim()
-    || c.req.header('x-real-ip')?.trim()
-    || 'unknown'
+  const clientIp = clientIpFromHeaders((name) => c.req.header(name))
   const limit = await getLoginLimit(clientIp, username)
   if (limit) {
     c.header('Retry-After', String(limit.retryAfterSeconds))

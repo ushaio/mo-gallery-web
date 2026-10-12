@@ -625,7 +625,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           onRefresh={() => void loadStories()}
         />
       ) : (
-        <div className="flex min-h-0 flex-1 gap-4 overflow-hidden">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
           <aside className={cn('hidden shrink-0 overflow-hidden border-r border-border md:flex md:w-[280px] xl:w-[320px]', isListPaneCollapsed && 'md:hidden')}>
             <div className="flex min-h-0 w-full flex-col overflow-hidden">
               <StoryListView
@@ -645,7 +645,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
               />
             </div>
           </aside>
-          <main className="min-w-0 flex-1 overflow-hidden">
+          <main className="min-w-0 flex-1 overflow-hidden md:-ml-px">
         <StoryEditorView
           token={token}
           currentStory={currentStory}

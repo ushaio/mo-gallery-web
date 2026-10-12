@@ -87,7 +87,10 @@ export default function Footer() {
                         rel="noopener noreferrer"
                         className="group relative inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors duration-300"
                       >
-                        <IconifyIcon icon={item.icon || 'lucide:globe'} className="w-4 h-4" />
+                        {/* 固定 16px 图标槽：图标名无效时 Iconify 会渲染出 0 宽的空元素，槽位保证文字仍与其他行对齐 */}
+                        <span className="flex w-4 h-4 shrink-0 items-center justify-center">
+                          <IconifyIcon icon={item.icon || 'lucide:globe'} className="w-4 h-4" />
+                        </span>
                         {item.title}
                       </a>
                     </li>

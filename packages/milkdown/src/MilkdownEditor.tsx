@@ -14,6 +14,7 @@ import { $prose, getMarkdown, insert, replaceAll } from '@milkdown/kit/utils'
 import { createFeatures } from './features'
 import { attachFontSizeEdit } from './font-size-edit'
 import { createMediaView, mediaDirective, mediaSchema } from './media-plugin'
+import { createMediaMergePlugin, handleMediaCardDrop, handleMediaTileDrop } from './media-merge'
 import { createTextStyleInheritancePlugin, textStyleSchema } from './text-style-plugin'
 import { ColorPalette } from './color-palette'
 import { blockStyleSchema } from './block-style-plugin'
@@ -21,6 +22,7 @@ import { MediaDialog } from './MediaDialog'
 import { buildMediaMarkdown, normalizeMedia, safeMediaUrl } from './media'
 import { parseMediaEmbed } from './media-embed'
 import type { MediaCardData, MediaUrlResolver } from './media'
+import type { MediaDialogSelectRenderer } from './media-dialog-select'
 import './style.css'
 
 export interface MilkdownEditorHandle {
@@ -54,6 +56,7 @@ export interface MilkdownEditorProps {
   onPasteFiles?: (files: File[]) => void
   onUpload?: (file: File) => Promise<string>
   resolveMediaUrl?: MediaUrlResolver
+  renderMediaDialogSelect?: MediaDialogSelectRenderer
   /**
    * 按 uploadId 取占位卡的本地预览图（blob: / 本地资源库缩略图）。
    *
@@ -85,6 +88,7 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
   const [characters, setCharacters] = useState(0)
   const [colorRequest, setColorRequest] = useState<{ field: 'color' | 'background'; view: import('@milkdown/kit/prose/view').EditorView; anchor: { top: number; left: number; bottom: number; right: number } } | null>(null)
   const [mediaRequest, setMediaRequest] = useState<MediaRequest | null>(null)
+  const [, refreshMediaDialog] = useState(0)
   const hasAI = Boolean(props.aiProvider)
 
   useLayoutEffect(() => { options.current = props })
@@ -172,6 +176,7 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
           if (alive.current) setMediaRequest({ initial: media, getPos, bookmark: crepe.editor.ctx.get(editorViewCtx).state.selection.getBookmark() })
         },
       }), refreshers.current))
+      .use($prose(() => createMediaMergePlugin()))
       .use(host)
       .config((ctx) => {
         ctx.update(editorViewOptionsCtx, (previous) => ({
@@ -192,7 +197,14 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
             view.dispatch(view.state.tr.replaceSelectionWith(mediaSchema.type(crepe.editor.ctx).create({ media: normalizeMedia(media) })).scrollIntoView())
             return true
           },
-          handleDrop: (view, event) => {
+          handleDrop: (view, event, _slice, moved) => {
+            // 两种媒体拖拽都必须在**视图自身的 props** 里接管：`EditorView.someProp` 先问这里的
+            // handleDrop，再问插件 —— Crepe 内核的 `prosemirror-drop-indicator` 排在本插件之前，
+            // 它的 handleDrop 只要指针附近找得到块边界就返回 true，把这次拖拽的切片插到那条边界上。
+            // 拖格时那会插一份副本、原来的格子还在（看起来像复制而不是移动）；拖整张卡时则变成
+            // 「把卡挪到那个边界」，永远并不成拼图。见 media-merge.ts 的两条注释。
+            if (handleMediaTileDrop(view, event)) return true
+            if (handleMediaCardDrop(view, event, moved)) return true
             const files = Array.from(event.dataTransfer?.files ?? []).filter((file) => file.type.startsWith('image/'))
             if (!files.length || !options.current.onPasteFiles) return false
             event.preventDefault()
@@ -241,10 +253,20 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
     let found = false
     const transaction = view.state.tr
     view.state.doc.descendants((node, pos) => {
-      const media = node.type.name === 'media_card' ? normalizeMedia(node.attrs.media) : null
-      if (media?.kind === 'upload' && media.uploadId === uploadId) {
+      if (node.type.name !== 'media_card') return
+      const media = normalizeMedia(node.attrs.media)
+      if (media.kind === 'upload' && media.uploadId === uploadId) {
         found = true
         transaction.setNodeMarkup(pos, undefined, { media: replacement ?? { ...media, status: 'failed' } })
+        return
+      }
+      // 并进拼图的待传格：上传完成后同样原地换成正式图片（否则拼图里会永远留一格占位）
+      if (media.kind === 'gallery' && media.images?.some((image) => image.uploadId === uploadId)) {
+        found = true
+        const images = media.images.map((image) => image.uploadId !== uploadId ? image : replacement
+          ? { src: replacement.src ?? '', alt: replacement.title ?? image.alt, photoId: replacement.photoId }
+          : { ...image, status: 'failed' as const })
+        transaction.setNodeMarkup(pos, undefined, { media: { ...media, images } })
       }
     })
     if (found) view.dispatch(transaction)
@@ -262,7 +284,10 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
     insertImageUploadPlaceholder: ({ uploadId, fileName, status }) => insertMarkdown(buildMediaMarkdown({ kind: 'upload', uploadId, title: fileName, status: status ?? 'uploading' })),
     resolveImageUploadPlaceholder: (uploadId, image) => updateUpload(uploadId, { kind: 'image', src: image.src, title: image.alt, photoId: image.photoId }),
     failImageUploadPlaceholder: (uploadId) => { updateUpload(uploadId) },
-    refreshUploadPreviews: () => { refreshers.current.forEach((render) => render()) },
+    refreshUploadPreviews: () => {
+      refreshers.current.forEach((render) => render())
+      if (alive.current) refreshMediaDialog((version) => version + 1)
+    },
   }), [get, insertMarkdown, updateUpload])
 
   const closeMedia = () => {
@@ -277,7 +302,7 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
     <div className="milkdown-editor-scroll"><Milkdown /></div>
     {colorRequest && <ColorPalette field={colorRequest.field} view={colorRequest.view} language={props.language ?? 'zh'} anchor={colorRequest.anchor} onClose={() => { setColorRequest(null); colorRequest.view.focus() }} />}
     <div className="milkdown-editor-status"><span>{loading ? (zh ? '正在加载编辑器…' : 'Loading editor…') : `${characters} ${zh ? '字' : 'characters'}`}{props.statusBar?.materialCount !== undefined && ` · ${props.statusBar.materialCount} ${zh ? '张素材' : 'photos'}`}</span><span>{props.statusBar?.trailing}</span></div>
-    {mediaRequest && <MediaDialog initial={mediaRequest.initial} language={props.language ?? 'zh'} onClose={closeMedia} onSubmit={(media) => {
+    {mediaRequest && <MediaDialog initial={mediaRequest.initial} language={props.language ?? 'zh'} resolveUploadPreview={props.resolveUploadPreview} resolveMediaUrl={props.resolveMediaUrl} renderSelect={props.renderMediaDialogSelect} onClose={closeMedia} onSubmit={(media) => {
       const editor = get()
       if (editor?.status !== EditorStatus.Created) return
       const view = editor.ctx.get(editorViewCtx)

@@ -8,6 +8,7 @@ import type {
   EditorAiConversationDto,
   EditorAiConversationUpdateInput,
   EditorAiConversationWithMessagesDto,
+  EditorAiForkConversationInput,
   EditorAiGenerateInput,
   EditorAiImageGenerateInput,
   EditorAiImageSaveResult,
@@ -25,6 +26,27 @@ export interface StoryAiStreamHandlers {
   onPersisted?: (messageIds: { userMessageId: string; assistantMessageId: string }) => void
   onDone?: () => void
   signal?: AbortSignal
+}
+
+function readUsageEvent(data: string): EditorAiUsage | null {
+  try {
+    const parsed = JSON.parse(data) as EditorAiUsage | null
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function readPersistedEvent(
+  data: string,
+): { userMessageId: string; assistantMessageId: string } | null {
+  try {
+    const parsed = JSON.parse(data) as Partial<{ userMessageId: string; assistantMessageId: string }> | null
+    if (!parsed?.userMessageId || !parsed.assistantMessageId) return null
+    return { userMessageId: parsed.userMessageId, assistantMessageId: parsed.assistantMessageId }
+  } catch {
+    return null
+  }
 }
 
 function parseServerSentEvents(
@@ -127,6 +149,18 @@ export async function streamStoryAiGenerate(
             throw new Error(data)
           }
 
+          if (eventName === 'usage' && data) {
+            const usage = readUsageEvent(data)
+            if (usage) handlers.onUsage?.(usage)
+            return
+          }
+
+          if (eventName === 'persisted' && data) {
+            const messageIds = readPersistedEvent(data)
+            if (messageIds) handlers.onPersisted?.(messageIds)
+            return
+          }
+
           if (eventName === 'done') {
             handlers.onDone?.()
           }
@@ -209,6 +243,25 @@ export async function clearEditorAiConversation(token: string, conversationId: s
   return apiRequestData<EditorAiConversationDto>(`/api/admin/editor-ai/conversations/${conversationId}/clear`, {
     method: 'POST',
   }, token)
+}
+
+/**
+ * Branch a conversation: the new conversation copies every message up to and
+ * including `messageId` from the source one.
+ */
+export async function forkEditorAiConversation(
+  token: string,
+  conversationId: string,
+  input: EditorAiForkConversationInput,
+): Promise<EditorAiConversationWithMessagesDto> {
+  return apiRequestData<EditorAiConversationWithMessagesDto>(
+    `/api/admin/editor-ai/conversations/${encodeURIComponent(conversationId)}/fork`,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+    token,
+  )
 }
 
 export function appendEditorAiMessage(

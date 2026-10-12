@@ -479,7 +479,9 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   return (
     <div className="h-full flex flex-col gap-6 overflow-hidden">
       {editMode === 'list' ? (
-        <div className="space-y-8 flex-1 flex flex-col overflow-hidden">
+        // 列表与搜索行之间统一 24px（同子标签栏到内容区的 `pt-6`）；这一行带 `border-b`，
+        // 所以 `pb-4` 保留在分隔线之上，24px 从分隔线起算。
+        <div className="gap-6 flex-1 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between border-b border-border pb-4 flex-shrink-0">
             <div className="flex items-center gap-4">
               <input

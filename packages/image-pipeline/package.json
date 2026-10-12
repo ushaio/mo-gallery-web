@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "exifreader": "^4.33.1",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

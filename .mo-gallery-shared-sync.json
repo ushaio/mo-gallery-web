@@ -3,21 +3,21 @@
   "note": "本文件由 mo-gallery-shared 的 pnpm sync 生成，请勿手工编辑。source.commit 是最近一次内容变更时执行同步的 shared HEAD；source.dirty 为 true 表示当时该改动尚未提交。",
   "source": {
     "repo": "github.com/ushaio/mo-gallery-shared",
-    "commit": "b2029fc39f0e22d66e649e3773765f5f3586e279",
+    "commit": "48dfafa9c3da9b01ef02250af18158d0a23a2926",
     "dirty": true
   },
-  "syncedAt": "2026-09-30T02:17:00.555Z",
+  "syncedAt": "2026-10-12T04:48:33.089Z",
   "packages": {
     "admin-console": {
-      "hash": "sha256:47cf6b91030bec3c71d1f7bd7db95bd74f977c84f138f9e763a6bc7bd47ebd60",
+      "hash": "sha256:890018a5fafaf3aa708d184514563b2c4d1f5d5bdcd5d8aee40b42fba6625ae4",
       "files": 18
     },
     "ai-agent": {
-      "hash": "sha256:153b0dd2c9e40ad1c146e5cef4c90eb475319959aff958842805f2bb563aef1a",
-      "files": 29
+      "hash": "sha256:71c02b847cade9f6f7d552340b41d38e4a040876c26a9220df82641d5c77b3cb",
+      "files": 30
     },
     "api-client": {
-      "hash": "sha256:ea8bcea60d3aa572cbc11c51620ff54f3b885293ee7b38dfcb50c7056b7e78b4",
+      "hash": "sha256:074f0a27863f9a35fcfb317acf0c6202946fec33e170b1b649ea85fb3390c462",
       "files": 24
     },
     "content-core": {
@@ -25,12 +25,12 @@
       "files": 8
     },
     "image-pipeline": {
-      "hash": "sha256:5882b672a485149eb456ac42e37a5efd71947c22950c0ce983a65cb320db574b",
+      "hash": "sha256:50d1229774a302720c0c571e4f3bb967b66cf307fa12cae4cbc7fb9008a9e3cb",
       "files": 7
     },
     "milkdown": {
-      "hash": "sha256:44eb42c715c01834106071aed82a17109038aa1eed962b3b4f915a4c7ff6734d",
-      "files": 24
+      "hash": "sha256:6b20372150dfb2e9ae928da53bdd721494cfea4d9f1c7a17c78d0c6ec7f914da",
+      "files": 28
     },
     "mo-editor": {
       "hash": "sha256:f6830c74c8b60c808745e086a793b630ffd3df3f686c910968dc60bfcc8b7a97",
@@ -41,7 +41,7 @@
       "files": 19
     },
     "tiptap-editor": {
-      "hash": "sha256:b99acb64b1cbfab916383998b4fb46801b8f9f1c48eb0b863981be0c02d44abc",
+      "hash": "sha256:188cce2a76efc3c858b2298d7e3795e705a029f6bd59facdb921136a27cba12d",
       "files": 49
     }
   }

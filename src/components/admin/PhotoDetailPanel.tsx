@@ -46,6 +46,9 @@ import { getArticlePlainText } from '@/lib/article-content'
 import { activateMilkdownContent, createMilkdownDraftContent } from '@/lib/article-editor'
 import { useLanguage } from '@/contexts/LanguageContext'
 
+/** 「重新分析主色」入口暂时隐藏（服务端能力保留）；改回 true 即恢复按钮。 */
+const SHOW_REANALYZE_COLORS = false
+
 const NarrativeMilkdownEditor = dynamic(() => import('@/components/NarrativeMilkdownEditor'), { ssr: false })
 type StoryFormData = ArticleContentDto & { title: string; isPublished: boolean }
 const createStoryForm = (): StoryFormData => ({ ...createMilkdownDraftContent(), title: '', isPublished: false })
@@ -420,7 +423,7 @@ export function PhotoDetailPanel({
 
             <div className="flex flex-1 min-h-0 flex-col">
               {/* Hero Image Section */}
-              <div className="relative w-full aspect-video bg-muted/50 group overflow-hidden flex-shrink-0">
+              <div className="relative w-full aspect-video group overflow-hidden flex-shrink-0">
                 <img
                   src={resolveAssetUrl(photo.url, cdnDomain)}
                   alt={photo.title}
@@ -474,6 +477,61 @@ export function PhotoDetailPanel({
                   <p className="text-xs font-bold uppercase tracking-widest mb-1 text-white/70">Resolution</p>
                   <p className="text-sm font-mono font-medium">{photo.width} × {photo.height}</p>
                 </div>
+              </div>
+
+              {/* 色卡：紧贴预览图下沿（与图带连成一条，不随下方信息区滚动） */}
+              <div className="flex flex-shrink-0 flex-wrap items-center gap-3 px-6 py-2">
+                {displayColors && displayColors.length > 0 ? (
+                  displayColors.map((color, index) => (
+                    <motion.div
+                      key={index}
+                      whileHover={{ y: -2 }}
+                      className="group/swatch relative cursor-pointer"
+                      onClick={() => {
+                        handleCopyText(color)
+                      }}
+                    >
+                      <div
+                        className="h-6 w-6 rounded-sm border border-border shadow-sm transition-all group-hover/swatch:border-primary/30 group-hover/swatch:shadow-md"
+                        style={{ backgroundColor: color }}
+                      />
+                      <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap font-mono text-[9px] uppercase text-muted-foreground opacity-0 transition-opacity group-hover/swatch:opacity-100">
+                        {color}
+                      </div>
+                    </motion.div>
+                  ))
+                ) : (
+                  <p className="text-[10px] italic text-muted-foreground">{t('admin.no_color_data')}</p>
+                )}
+                {SHOW_REANALYZE_COLORS && (
+                <AdminButton
+                  onClick={async () => {
+                    if (!token || !photo) return
+                    setReanalyzing(true)
+                    try {
+                      const updated = await reanalyzePhotoColors(token, photo.id)
+                      setDisplayColors(updated.dominantColors || [])
+                      onSave(updated)
+                      notify(t('admin.notify_success'), 'success')
+                    } catch (err) {
+                      if (err instanceof ApiUnauthorizedError) {
+                        onUnauthorized()
+                      } else {
+                        notify(err instanceof Error ? err.message : t('common.error'), 'error')
+                      }
+                    } finally {
+                      setReanalyzing(false)
+                    }
+                  }}
+                  disabled={reanalyzing}
+                  adminVariant="ghost"
+                  size="xs"
+                  className="ml-auto text-[10px] font-bold tracking-widest opacity-60 hover:opacity-100"
+                >
+                  <RefreshCw className={`mr-2 h-3 w-3 ${reanalyzing ? 'animate-spin' : ''}`} />
+                  RE-ANALYZE
+                </AdminButton>
+                )}
               </div>
 
               {/* Navigation Tabs - Editorial Style */}
@@ -644,70 +702,6 @@ export function PhotoDetailPanel({
                             </p>
                           </div>
                         </div>
-                      </section>
-
-                      {/* Color Palette - Visual Focus */}
-                      <section className="pt-8 border-t border-border/50">
-                        <div className="flex items-center justify-between mb-8">
-                          <h4 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-3">
-                            <span className="w-4 h-px bg-primary/20" />
-                            {t('gallery.palette') || 'Color Palette'}
-                          </h4>
-                          <AdminButton
-                            onClick={async () => {
-                              if (!token || !photo) return
-                              setReanalyzing(true)
-                              try {
-                                const updated = await reanalyzePhotoColors(token, photo.id)
-                                setDisplayColors(updated.dominantColors || [])
-                                onSave(updated)
-                                notify(t('admin.notify_success'), 'success')
-                              } catch (err) {
-                                if (err instanceof ApiUnauthorizedError) {
-                                  onUnauthorized()
-                                } else {
-                                  notify(err instanceof Error ? err.message : t('common.error'), 'error')
-                                }
-                              } finally {
-                                setReanalyzing(false)
-                              }
-                            }}
-                            disabled={reanalyzing}
-                            adminVariant="ghost"
-                            size="xs"
-                            className="text-[10px] font-bold tracking-widest opacity-60 hover:opacity-100"
-                          >
-                            <RefreshCw className={`w-3 h-3 mr-2 ${reanalyzing ? 'animate-spin' : ''}`} />
-                            RE-ANALYZE
-                          </AdminButton>
-                        </div>
-                        
-                        {displayColors && displayColors.length > 0 ? (
-                          <div className="flex items-center gap-3 flex-wrap">
-                            {displayColors.map((color, index) => (
-                              <motion.div
-                                key={index}
-                                whileHover={{ y: -2 }}
-                                className="relative group cursor-pointer"
-                                onClick={() => {
-                                  handleCopyText(color)
-                                }}
-                              >
-                                <div
-                                  className="w-8 h-8 rounded-sm border border-border shadow-sm transition-all group-hover:shadow-md group-hover:border-primary/30"
-                                  style={{ backgroundColor: color }}
-                                />
-                                <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-[9px] font-mono text-muted-foreground uppercase whitespace-nowrap">
-                                  {color}
-                                </div>
-                              </motion.div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="py-6 border border-dashed border-border flex items-center justify-center">
-                            <p className="text-xs text-muted-foreground italic">{t('admin.no_color_data')}</p>
-                          </div>
-                        )}
                       </section>
 
                       {/* File & Storage Details */}

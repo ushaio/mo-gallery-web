@@ -7,7 +7,6 @@ import remarkGfm from 'remark-gfm'
 import {
   Plus,
   Send,
-  MessageSquare,
   X,
   ChevronLeft,
   ChevronDown,
@@ -24,10 +23,11 @@ import {
   Loader2,
   Image as ImageIcon,
   Pencil,
+  GitBranch,
   Trash2,
   Download,
 } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { useAuth } from '@/contexts/AuthContext'
 import { ApiUnauthorizedError } from '@/lib/api/core'
 import {
@@ -42,6 +42,7 @@ import {
   streamStoryAiGenerate,
   getStoryAiModels,
   generateEditorAiImage,
+  forkEditorAiConversation,
   saveEditorAiMessageImage,
 } from '@/lib/api/story-ai'
 import type {
@@ -51,6 +52,7 @@ import type {
   StoryAiModelOption,
   StoryAiModelsResponse,
 } from '@/lib/api/types'
+import { EDITOR_AI_CHAT_SYSTEM_PROMPT, type EditorAiUsage } from '@mo-gallery/ai-agent'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { Skeleton } from '@/components/admin/Skeleton'
 import { useAdmin } from '../layout'
@@ -294,18 +296,18 @@ function MessageImage({
   }
 
   return (
-    <div className="relative max-w-[200px] rounded-lg overflow-hidden border border-border/20">
+    <div className="relative max-w-[200px] overflow-hidden border border-border">
       <img
         src={image.url}
         alt={alt}
-        className="max-h-[200px] object-contain bg-muted/20"
+        className="max-h-[200px] object-contain bg-muted/40"
         loading="lazy"
         onContextMenu={handleContextMenu}
       />
       {contextMenu && typeof document !== 'undefined' && createPortal(
         <div
           role="menu"
-          className="fixed z-[100] min-w-44 rounded-lg border border-border bg-popover p-1 shadow-xl"
+          className="fixed z-[100] min-w-44 border border-border bg-popover p-1 shadow-lg"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onPointerDown={(event) => event.stopPropagation()}
         >
@@ -314,7 +316,7 @@ function MessageImage({
             role="menuitem"
             disabled={saving || saved}
             onClick={() => void handleSave()}
-            className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-default disabled:opacity-50"
+            className="flex w-full cursor-pointer items-center gap-2 px-2.5 py-2 text-left text-[13px] text-popover-foreground transition-colors hover:bg-muted disabled:cursor-default disabled:opacity-50"
           >
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageIcon className="h-3.5 w-3.5" />}
             {saved ? t('admin.ai_saved_to_album') : t('admin.ai_save_to_album')}
@@ -324,7 +326,7 @@ function MessageImage({
             role="menuitem"
             disabled={downloading}
             onClick={() => void handleDownload()}
-            className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-default disabled:opacity-50"
+            className="flex w-full cursor-pointer items-center gap-2 px-2.5 py-2 text-left text-[13px] text-popover-foreground transition-colors hover:bg-muted disabled:cursor-default disabled:opacity-50"
           >
             {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
             {t('admin.ai_download_to_local')}
@@ -334,6 +336,140 @@ function MessageImage({
       )}
     </div>
   )
+}
+
+function readJsonRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function readUsageCount(record: Record<string, unknown>, key: string): number | undefined {
+  const value = record[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+/** Reads `metadata.usage` as persisted by the server (OpenAI/DeepSeek-style counter names
+ * are already normalized there, so only the four canonical keys are handled here). */
+function readMessageUsage(metadata: EditorAiMessageDto['metadata'] | undefined): EditorAiUsage | null {
+  const root = readJsonRecord(metadata)
+  const usage = root ? readJsonRecord(root.usage) : null
+  if (!usage) return null
+
+  const inputTokens = readUsageCount(usage, 'inputTokens')
+  const outputTokens = readUsageCount(usage, 'outputTokens')
+  const reasoningTokens = readUsageCount(usage, 'reasoningTokens')
+  const cacheReadTokens = readUsageCount(usage, 'cacheReadTokens')
+  if (
+    inputTokens === undefined
+    && outputTokens === undefined
+    && reasoningTokens === undefined
+    && cacheReadTokens === undefined
+  ) {
+    return null
+  }
+
+  return {
+    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(outputTokens === undefined ? {} : { outputTokens }),
+    ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+    ...(cacheReadTokens === undefined ? {} : { cacheReadTokens }),
+  }
+}
+
+function serializeUsage(usage: EditorAiUsage): Record<string, number> | null {
+  const entries = Object.entries(usage).filter(
+    (entry): entry is [string, number] => typeof entry[1] === 'number' && Number.isFinite(entry[1]),
+  )
+  return entries.length > 0 ? Object.fromEntries(entries) : null
+}
+
+/** Mirrors the server-side write so live streaming usage and reloaded usage render alike. */
+function withMessageUsage(message: EditorAiMessageDto, usage: EditorAiUsage): EditorAiMessageDto {
+  const serialized = serializeUsage(usage)
+  if (!serialized) return message
+  const metadata = readJsonRecord(message.metadata) ?? {}
+  return { ...message, metadata: { ...metadata, usage: serialized } }
+}
+
+function readImageRefs(metadata: unknown): Array<{ url: string; key?: string }> {
+  const root = readJsonRecord(metadata)
+  if (!Array.isArray(root?.images)) return []
+  return root.images.flatMap((image) => {
+    const record = readJsonRecord(image)
+    const url = typeof image === 'string' ? image : (typeof record?.url === 'string' ? record.url : '')
+    if (!url) return []
+    const key = typeof record?.key === 'string' && record.key ? record.key : undefined
+    return [{ url, ...(key ? { key } : {}) }]
+  })
+}
+
+function formatTokenCount(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1).replace(/\.0$/, '')}k`
+  return String(value)
+}
+
+function cacheHitPercent(usage: EditorAiUsage): number | null {
+  if (!usage.inputTokens || usage.cacheReadTokens === undefined) return null
+  return Math.round((usage.cacheReadTokens / usage.inputTokens) * 100)
+}
+
+/** Margin note next to a turn: the prompt size under the question, the answer size and
+ * cache hit rate under the reply. */
+function formatUsageSummary(
+  usage: EditorAiUsage,
+  t: (key: string) => string,
+  variant: 'user' | 'assistant',
+): string {
+  if (variant === 'user') {
+    return usage.inputTokens === undefined
+      ? ''
+      : `${t('admin.ai_usage_input')} ${formatTokenCount(usage.inputTokens)}`
+  }
+
+  const parts: string[] = []
+  if (usage.outputTokens !== undefined) {
+    parts.push(`${t('admin.ai_usage_output')} ${formatTokenCount(usage.outputTokens)}`)
+  } else if (usage.inputTokens !== undefined) {
+    parts.push(`${t('admin.ai_usage_input')} ${formatTokenCount(usage.inputTokens)}`)
+  }
+  const percent = cacheHitPercent(usage)
+  if (percent !== null) parts.push(`${t('admin.ai_usage_cache')} ${percent}%`)
+  return parts.join(' · ')
+}
+
+function formatUsageDetail(usage: EditorAiUsage, t: (key: string) => string): string {
+  const exact = (value: number) => value.toLocaleString('en-US')
+  const parts: string[] = []
+  if (usage.inputTokens !== undefined) {
+    parts.push(`${t('admin.ai_usage_input')} ${exact(usage.inputTokens)}`)
+  }
+  if (usage.outputTokens !== undefined) {
+    parts.push(`${t('admin.ai_usage_output')} ${exact(usage.outputTokens)}`)
+  }
+  if (usage.cacheReadTokens !== undefined) {
+    const percent = cacheHitPercent(usage)
+    parts.push(`${t('admin.ai_usage_cached')} ${exact(usage.cacheReadTokens)}${percent === null ? '' : ` (${percent}%)`}`)
+  }
+  if (usage.reasoningTokens !== undefined) {
+    parts.push(`${t('admin.ai_usage_reasoning')} ${exact(usage.reasoningTokens)}`)
+  }
+  if (usage.inputTokens !== undefined && usage.outputTokens !== undefined) {
+    parts.push(`${t('admin.ai_usage_total')} ${exact(usage.inputTokens + usage.outputTokens)}`)
+  }
+  return parts.join(' · ')
+}
+
+/** The turn following a user message carries its usage; the user row borrows it. */
+function findTurnUsage(messages: EditorAiMessageDto[], index: number): EditorAiUsage | null {
+  for (let cursor = index + 1; cursor < messages.length; cursor += 1) {
+    const candidate = messages[cursor]
+    if (!candidate || candidate.role !== 'assistant') break
+    const usage = readMessageUsage(candidate.metadata)
+    if (usage) return usage
+  }
+  return null
 }
 
 function reconcilePersistedMessages(
@@ -359,15 +495,7 @@ function formatConversationDate(dateStr: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-// Staggered reveal variants
-const staggerItem = {
-  hidden: { opacity: 0, y: 12 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay: i * 0.06, duration: 0.35, ease: [0.23, 0.36, 0.18, 0.97] as const },
-  }),
-}
+// Staggered reveal variants removed in favour of the panel's single open/close motion.
 
 export default function AiAssistantPage() {
   const { t, notify, handleUnauthorized } = useAdmin()
@@ -398,6 +526,7 @@ export default function AiAssistantPage() {
   const [savingPrompt, setSavingPrompt] = useState(false)
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
   const [persistedMessageIds, setPersistedMessageIds] = useState<Record<string, string>>({})
+  const [forkingId, setForkingId] = useState<string | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
@@ -514,7 +643,6 @@ export default function AiAssistantPage() {
     }
     if (skipConversationLoadRef.current === activeConversation) {
       skipConversationLoadRef.current = null
-      setSystemPromptDraft('')
       setLoadingConversation(false)
       return
     }
@@ -543,11 +671,8 @@ export default function AiAssistantPage() {
     void loadMessages()
   }, [token, activeConversation]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleNewConversation = async () => {
-    clearDeleteArm()
-    setConversationMenu(null)
-    setRenameTarget(null)
-    if (!token) return
+  const createConversation = async () => {
+    if (!token) return null
     try {
       const convo = await createEditorAiConversation(token, {
         scopeId: SCOPE_ID,
@@ -559,15 +684,45 @@ export default function AiAssistantPage() {
       setActiveConversation(convo.id)
       setMessages([])
       setLoadingConversation(false)
-      setInput('')
-      textareaRef.current?.focus()
+      return convo
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
         handleUnauthorized(error)
-        return
+        return null
       }
       notify(t('common.error'), 'error')
+      return null
     }
+  }
+
+  const handleNewConversation = async () => {
+    clearDeleteArm()
+    setConversationMenu(null)
+    setRenameTarget(null)
+    const convo = await createConversation()
+    if (!convo) return
+    setInput('')
+    textareaRef.current?.focus()
+  }
+
+  // 刚进页面时没有选中对话；系统提示词是按会话保存的，所以先落一个会话作为它的归属
+  const openSystemPrompt = async () => {
+    if (showSystemPrompt) {
+      setShowSystemPrompt(false)
+      return
+    }
+    const conversationId = activeConversationRef.current
+    if (!conversationId) {
+      const created = await createConversation()
+      if (!created) return
+      setSystemPromptDraft(created.systemPrompt || EDITOR_AI_CHAT_SYSTEM_PROMPT)
+      setShowSystemPrompt(true)
+      return
+    }
+    setSystemPromptDraft(
+      conversations.find((item) => item.id === conversationId)?.systemPrompt || EDITOR_AI_CHAT_SYSTEM_PROMPT,
+    )
+    setShowSystemPrompt(true)
   }
 
   const clearDeleteArm = () => {
@@ -699,13 +854,28 @@ export default function AiAssistantPage() {
     }
   }
 
+  const reduceMotion = useReducedMotion()
+
+  // The system prompt editor is a right-side drawer; Escape closes it like the
+  // other dismissible overlays on this page.
+  useEffect(() => {
+    if (!showSystemPrompt) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowSystemPrompt(false)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [showSystemPrompt])
+
   const handleSaveSystemPrompt = async () => {
     if (!token || !activeConversation || savingPrompt) return
     setSavingPrompt(true)
     try {
       const trimmed = systemPromptDraft.trim()
+      // 与内置默认逐字相同的文本不算自定义，否则页头会点亮一个其实没有差异的「自定义」标记
+      const nextSystemPrompt = !trimmed || trimmed === EDITOR_AI_CHAT_SYSTEM_PROMPT ? null : trimmed
       const updated = await updateEditorAiConversation(token, activeConversation, {
-        systemPrompt: trimmed || null,
+        systemPrompt: nextSystemPrompt,
       })
       setConversations((prev) =>
         prev.map((c) => (c.id === activeConversation ? { ...c, systemPrompt: updated.systemPrompt } : c)),
@@ -810,19 +980,31 @@ export default function AiAssistantPage() {
   const imageModels = models?.models.filter(supportsImageGeneration) ?? []
   const activeModelLabel = imageMode ? (selectedImageModel || 'image model') : (selectedModel || 'default')
 
-  const handleSend = async () => {
-    const sendableImages = attachedImages.filter((image) => image.status === 'ready' && image.url)
+  const handleSend = async (override?: {
+    prompt?: string
+    replaceMessageId?: string
+    images?: AttachedImage[]
+  }): Promise<boolean> => {
+    const sendableImages = (override?.images ?? attachedImages).filter((image) => image.status === 'ready' && image.url)
+    const rawUserInput = (override?.prompt ?? input).trim()
     if (!token || sending || uploadingImages || (
-      imageMode ? !input.trim() : (!input.trim() && sendableImages.length === 0)
-    )) return
+      imageMode ? !rawUserInput : (!rawUserInput && sendableImages.length === 0)
+    )) return false
     if (imageMode && !selectedImageModel) {
       notify(t('admin.ai_image_model_required'), 'error')
-      return
+      return false
     }
 
     let conversationId = activeConversation
-    const rawUserInput = input.trim()
     const userInput = rawUserInput || t('admin.ai_image_only_prompt')
+    // Editing an existing turn rolls the conversation back to that message first; the
+    // server deletes it (and everything after it) in the same request that appends the
+    // replacement turn.
+    const replaceMessageId = override?.replaceMessageId
+    const truncateFromMessageId = replaceMessageId
+      ? (persistedMessageIds[replaceMessageId]
+        ?? (replaceMessageId.startsWith('local-') ? undefined : replaceMessageId))
+      : undefined
 
     // Auto-create conversation if none active. Skip the effect's first empty fetch,
     // otherwise it can race with and hide this first optimistic message.
@@ -841,10 +1023,10 @@ export default function AiAssistantPage() {
       } catch (error) {
         if (error instanceof ApiUnauthorizedError) {
           handleUnauthorized(error)
-          return
+          return false
         }
         notify(t('common.error'), 'error')
-        return
+        return false
       }
     }
 
@@ -864,7 +1046,7 @@ export default function AiAssistantPage() {
       })
     }
 
-    const quoted = quotedMessage
+    const quoted = override ? null : quotedMessage
     const images = sendableImages.map((image) => image.url)
     const imageMeta = sendableImages.map((image) => ({ url: image.url, key: image.key }))
     const prompt = quoted
@@ -892,13 +1074,20 @@ export default function AiAssistantPage() {
       createdAt: now,
     }
 
-    attachedImages.forEach((image) => URL.revokeObjectURL(image.previewUrl))
-    setInput('')
-    setQuotedMessage(null)
-    setAttachedImages([])
+    if (!override) {
+      attachedImages.forEach((image) => URL.revokeObjectURL(image.previewUrl))
+      setInput('')
+      setQuotedMessage(null)
+      setAttachedImages([])
+    }
     setSending(true)
     isNearBottomRef.current = true
-    setMessages((prev) => [...prev, optimisticUserMessage, optimisticAssistantMessage])
+    setMessages((prev) => {
+      if (!replaceMessageId) return [...prev, optimisticUserMessage, optimisticAssistantMessage]
+      const index = prev.findIndex((message) => message.id === replaceMessageId)
+      const kept = index === -1 ? prev : prev.slice(0, index)
+      return [...kept, optimisticUserMessage, optimisticAssistantMessage]
+    })
 
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
 
@@ -925,6 +1114,7 @@ export default function AiAssistantPage() {
           imageSize: selectedImageSize,
           images: images.length > 0 ? images : undefined,
           imageKeys: images.length > 0 ? sendableImages.map((image) => image.key) : undefined,
+          truncateFromMessageId,
         })
         const persistedMessages = persistedConversation.messages || []
         const persistedUserMessage = persistedMessages.at(-2)
@@ -953,11 +1143,24 @@ export default function AiAssistantPage() {
             title: conversationTitle,
             images: images.length > 0 ? images : undefined,
             imageKeys: images.length > 0 ? sendableImages.map((image) => image.key) : undefined,
+            truncateFromMessageId,
           },
           {
             onChunk: (chunk) => {
               accumulated += chunk
               updateAssistant(accumulated, 'streaming')
+            },
+            onUsage: (usage) => {
+              setMessages((prev) => prev.map((message) => (
+                message.id === assistantMessageId ? withMessageUsage(message, usage) : message
+              )))
+            },
+            onPersisted: (messageIds) => {
+              setPersistedMessageIds((previous) => ({
+                ...previous,
+                [userMessageId]: messageIds.userMessageId,
+                [assistantMessageId]: messageIds.assistantMessageId,
+              }))
             },
             signal: abortController.signal,
           },
@@ -985,6 +1188,7 @@ export default function AiAssistantPage() {
             : conversation,
         ))
       }
+      return true
     } catch (error) {
       const aborted = error instanceof DOMException && error.name === 'AbortError'
       const errorMessage = aborted ? t('admin.ai_generation_stopped') : error instanceof Error ? error.message : t('common.error')
@@ -995,9 +1199,12 @@ export default function AiAssistantPage() {
       )
       if (error instanceof ApiUnauthorizedError) {
         handleUnauthorized(error)
-        return
+        return false
       }
       if (!aborted) notify(errorMessage, 'error')
+      // A stopped turn was still appended (and rolled back) server-side, so the caller
+      // can treat it as delivered.
+      return aborted
     } finally {
       abortRef.current = null
       setSending(false)
@@ -1019,6 +1226,69 @@ export default function AiAssistantPage() {
   const handleQuote = (msg: EditorAiMessageDto) => {
     setQuotedMessage(msg)
     textareaRef.current?.focus()
+  }
+
+  /** Editing a user turn resends it: the server rolls the conversation back to that
+   * message first, so everything after it is replaced by the new turn. */
+  const handleEditSubmit = async (message: EditorAiMessageDto, content: string) => {
+    if (!token || sending) return
+    const images: AttachedImage[] = readImageRefs(message.metadata).flatMap((reference, index) => (
+      reference.key
+        ? [{
+          id: `${message.id}-image-${index}`,
+          url: reference.url,
+          key: reference.key,
+          previewUrl: reference.url,
+          status: 'ready' as const,
+        }]
+        : []
+    ))
+    const delivered = await handleSend({
+      prompt: content,
+      replaceMessageId: message.id,
+      images,
+    })
+    if (!delivered) throw new Error(t('common.error'))
+  }
+
+  /** Branches the conversation into a new one that ends at this assistant reply. */
+  const handleFork = async (message: EditorAiMessageDto) => {
+    if (!token || !activeConversation || sending || forkingId) return
+    const persistedId = persistedMessageIds[message.id]
+      ?? (message.id.startsWith('local-') ? undefined : message.id)
+    if (!persistedId) {
+      notify(t('admin.ai_message_pending'), 'error')
+      return
+    }
+    const source = conversations.find((conversation) => conversation.id === activeConversation)
+    const branchTitle = source?.title && source.title !== t('admin.ai_new_chat')
+      ? `${source.title} · ${t('admin.ai_fork_short')}`
+      : undefined
+
+    setForkingId(message.id)
+    try {
+      const forked = await forkEditorAiConversation(token, activeConversation, {
+        messageId: persistedId,
+        ...(branchTitle ? { title: branchTitle } : {}),
+      })
+      const { messages: forkedMessages = [], ...forkedConversation } = forked
+      setConversations((previous) => [forkedConversation, ...previous])
+      skipConversationLoadRef.current = forkedConversation.id
+      activeConversationRef.current = forkedConversation.id
+      setActiveConversation(forkedConversation.id)
+      setLoadingConversation(false)
+      setMessages(forkedMessages)
+      setPersistedMessageIds({})
+      notify(t('admin.ai_fork_created'), 'success')
+    } catch (error) {
+      if (error instanceof ApiUnauthorizedError) {
+        handleUnauthorized(error)
+        return
+      }
+      notify(error instanceof Error ? error.message : t('admin.ai_fork_failed'), 'error')
+    } finally {
+      setForkingId(null)
+    }
   }
 
   const handleSaveMessageImage = useCallback(async (messageId: string, imageUrl: string) => {
@@ -1063,11 +1333,11 @@ export default function AiAssistantPage() {
 
   if (loading) {
     return (
-      <div className="h-full flex overflow-hidden rounded-2xl">
-        <div className="w-64 border-r border-border p-3 space-y-2 shrink-0">
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
+      <div className="flex h-full overflow-hidden bg-background">
+        <div className="w-64 shrink-0 space-y-2 border-r border-border p-4">
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
         </div>
-        <div className="flex-1 p-6 space-y-4">
+        <div className="flex-1 space-y-4 p-8">
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-3/4" />)}
         </div>
       </div>
@@ -1075,7 +1345,7 @@ export default function AiAssistantPage() {
   }
 
   return (
-    <div className="h-full flex overflow-hidden rounded-2xl">
+    <div className="flex h-full overflow-hidden bg-background">
       <input
         ref={fileInputRef}
         type="file"
@@ -1092,60 +1362,47 @@ export default function AiAssistantPage() {
             animate={{ width: 280, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={{ duration: 0.25, ease: [0.23, 0.36, 0.18, 0.97] }}
-            className="flex-shrink-0 flex flex-col overflow-hidden border-r border-border/40 bg-gradient-to-b from-muted/10 via-background to-muted/5"
+            className="flex flex-shrink-0 flex-col overflow-hidden border-r border-border bg-muted/30"
           >
             {/* Sidebar header */}
-            <div className="px-5 pb-4 pt-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/10">
-                    <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                  </span>
-                  <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                    {t('admin.ai_conversations')}
-                  </span>
-                </div>
-                <span className="text-[10px] tabular-nums text-muted-foreground/50">
+            <div className="px-4 pb-3 pt-4">
+              <div className="mb-3 flex items-baseline justify-between gap-2">
+                <h2 className="font-serif text-lg leading-none tracking-tight">
+                  {t('admin.ai_conversations')}
+                </h2>
+                <span className="text-[11px] tabular-nums text-muted-foreground">
                   {conversations.length}
                 </span>
               </div>
               <AdminButton
                 onClick={handleNewConversation}
-                adminVariant="outlineMuted"
+                adminVariant="outline"
                 size="sm"
-                className="w-full justify-start gap-2.5 rounded-xl border-dashed border-border/60 bg-transparent py-2.5 text-xs font-medium hover:border-amber-500/30 hover:bg-amber-500/[0.04] hover:text-foreground transition-all duration-200"
+                className="w-full justify-start gap-2"
               >
-                <Plus className="w-3.5 h-3.5 text-amber-500/70" />
+                <Plus className="h-3.5 w-3.5" />
                 <span>{t('admin.ai_new_chat')}</span>
               </AdminButton>
             </div>
 
             {/* Conversation list */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar px-3 pb-3">
+            <div className="flex-1 overflow-y-auto custom-scrollbar px-2 py-1">
               {conversations.length === 0 ? (
-                <div className="py-16 text-center">
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 0.15 }}
-                    transition={{ delay: 0.2 }}
-                  >
-                    <MessageSquare className="w-8 h-8 mx-auto mb-4" />
-                  </motion.div>
-                  <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground/30">
+                <div className="px-2 py-10">
+                  <p className="text-[13px] leading-relaxed text-muted-foreground">
                     {t('admin.ai_no_conversations')}
+                  </p>
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground/70">
+                    {t('admin.ai_no_conversations_hint')}
                   </p>
                 </div>
               ) : (
-                <div className="space-y-0.5">
-                  {conversations.map((convo, idx) => {
+                <div className="space-y-1">
+                  {conversations.map((convo) => {
                     const isActive = activeConversation === convo.id
                     return (
                       <motion.div
                         key={convo.id}
-                        custom={idx}
-                        initial="hidden"
-                        animate="visible"
-                        variants={staggerItem}
                         role="button"
                         tabIndex={0}
                         onKeyDown={(e) => {
@@ -1162,28 +1419,13 @@ export default function AiAssistantPage() {
                             y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
                           })
                         }}
-                        className={`group relative flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-all duration-200 rounded-xl ${
+                        className={`group relative flex cursor-pointer items-start gap-2 border-l-2 py-2 pl-2.5 pr-1 transition-colors ${
                           isActive
-                            ? 'bg-amber-500/[0.08] text-foreground shadow-[inset_0_1px_0_rgba(245,158,11,0.08)]'
-                            : 'hover:bg-muted/50 text-muted-foreground'
+                            ? 'border-primary bg-background'
+                            : 'border-transparent hover:bg-background/70'
                         }`}
                       >
-                        {/* Active indicator */}
-                        {isActive && (
-                          <motion.div
-                            layoutId="sidebar-active"
-                            className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-amber-500/80"
-                            transition={{ type: 'spring', stiffness: 500, damping: 35 }}
-                          />
-                        )}
-
-                        <span className={`flex-shrink-0 text-[10px] tabular-nums font-medium w-5 text-right ${
-                          isActive ? 'text-amber-500/80' : 'text-muted-foreground/25 group-hover:text-muted-foreground/40'
-                        }`}>
-                          {idx + 1 < 10 ? `0${idx + 1}` : idx + 1}
-                        </span>
-
-                        <div className="flex-1 min-w-0">
+                        <div className="min-w-0 flex-1">
                           {renameTarget?.id === convo.id && renameTarget.surface === 'sidebar' ? (
                             <input
                               autoFocus
@@ -1204,26 +1446,26 @@ export default function AiAssistantPage() {
                                 }
                               }}
                               maxLength={200}
-                              className="h-6 w-full rounded-md border border-amber-500/40 bg-background px-2 text-xs outline-none"
+                              className="h-7 w-full border border-border bg-background px-2 text-[13px] outline-none focus:border-primary"
                               aria-label={t('admin.ai_rename_conversation')}
                             />
                           ) : (
-                            <div className={`text-xs leading-5 truncate transition-colors duration-200 ${
-                              isActive ? 'font-medium' : 'font-normal'
+                            <div className={`truncate text-[13px] leading-5 transition-colors ${
+                              isActive ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'
                             }`}>
                               {convo.title || t('admin.ai_new_chat')}
                             </div>
                           )}
-                          <div className="flex items-center gap-1.5 mt-0.5">
+                          <div className="mt-1 flex items-center gap-2">
                             <ScopeBadge scopeId={convo.scopeId} />
-                            <span className="whitespace-nowrap text-[10px] text-muted-foreground/40 tabular-nums">
+                            <span className="whitespace-nowrap text-[11px] text-muted-foreground/70 tabular-nums">
                               {formatConversationDate(convo.updatedAt)}
                             </span>
                           </div>
                         </div>
 
                         {generatingTitleId === convo.id && (
-                          <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin text-amber-500/70" />
+                          <Loader2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 animate-spin text-muted-foreground" />
                         )}
 
                         <button
@@ -1232,10 +1474,10 @@ export default function AiAssistantPage() {
                             e.stopPropagation()
                             handleDeleteClick(convo.id)
                           }}
-                          className={`flex-shrink-0 p-1 transition-all duration-200 rounded-md hover:bg-destructive/5 disabled:cursor-default disabled:opacity-30 ${
+                          className={`mt-0.5 flex-shrink-0 p-1 transition-opacity focus-visible:opacity-100 disabled:cursor-default disabled:opacity-30 ${
                             pendingDeleteId === convo.id
                               ? 'opacity-100 text-destructive'
-                              : 'opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-destructive'
+                              : 'opacity-0 text-muted-foreground group-hover:opacity-100 hover:text-destructive'
                           }`}
                           aria-label={pendingDeleteId === convo.id ? t('admin.ai_delete_confirm_again') : t('common.delete')}
                           title={pendingDeleteId === convo.id ? t('admin.ai_delete_confirm_again') : t('common.delete')}
@@ -1250,32 +1492,29 @@ export default function AiAssistantPage() {
             </div>
 
             {/* Sidebar footer 鈥?subtle model indicator */}
-            <div className="px-4 py-3 border-t border-border/30">
-              <div className="flex items-center gap-2 text-[10px] text-muted-foreground/40">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500/50" />
-                <span className="tracking-wider uppercase">{activeModelLabel}</span>
-              </div>
+            <div className="flex items-center gap-2 border-t border-border px-4 py-3">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+              <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                {activeModelLabel}
+              </span>
             </div>
           </motion.aside>
         )}
       </AnimatePresence>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0 bg-background">
+      <div className="relative flex min-w-0 flex-1 flex-col bg-background">
         {/* Chat header */}
-        <div className="flex items-center gap-3 px-5 h-14 border-b border-border/30 flex-shrink-0 bg-background/80 backdrop-blur-sm">
+        <div className="flex h-14 flex-shrink-0 items-center gap-3 border-b border-border px-4">
           <button
             onClick={() => setShowSidebar(!showSidebar)}
-            className="p-1.5 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 transition-all duration-200"
+            className="p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             aria-label={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
           >
-            <ChevronLeft className={`w-4 h-4 transition-transform duration-300 ${!showSidebar ? 'rotate-180' : ''}`} />
+            <ChevronLeft className={`h-4 w-4 transition-transform duration-300 motion-reduce:transition-none ${!showSidebar ? 'rotate-180' : ''}`} />
           </button>
 
-          <div className="flex items-center gap-2.5 flex-1 min-w-0">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/10">
-              <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-            </span>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             {activeConversation && renameTarget?.id === activeConversation && renameTarget.surface === 'header' ? (
               <input
                 autoFocus
@@ -1293,7 +1532,7 @@ export default function AiAssistantPage() {
                   }
                 }}
                 maxLength={200}
-                className="h-8 min-w-0 flex-1 rounded-lg border border-amber-500/25 bg-muted/20 px-2.5 text-xs font-medium tracking-wide outline-none focus:border-amber-500/50"
+                className="h-8 min-w-0 flex-1 border border-border bg-background px-2.5 text-[13px] outline-none focus:border-primary"
                 aria-label={t('admin.ai_rename_conversation')}
               />
             ) : (
@@ -1301,42 +1540,35 @@ export default function AiAssistantPage() {
                 type="button"
                 disabled={!activeConversation}
                 onClick={() => { if (activeConversation) startRenamingConversation(activeConversation, 'header') }}
-                className="min-w-0 truncate text-left text-xs font-medium tracking-wide disabled:cursor-default"
+                className="min-w-0 truncate text-left text-[13px] text-foreground disabled:cursor-default"
                 title={activeConversation ? t('admin.ai_rename_conversation') : undefined}
               >
                 {activeConvoData?.title || t('admin.ai_assistant')}
               </button>
             )}
             {hasCustomPrompt && (
-              <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-amber-500/60" title={t('admin.ai_system_prompt_title')} />
+              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary" title={t('admin.ai_system_prompt_title')} />
             )}
           </div>
 
           <div className="flex items-center gap-1">
-            {activeConversation && (
-              <button
-                onClick={() => {
-                  setShowSystemPrompt(!showSystemPrompt)
-                  if (!showSystemPrompt) {
-                    setSystemPromptDraft(activeConvoData?.systemPrompt || '')
-                  }
-                }}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium uppercase tracking-wider transition-all duration-200 cursor-pointer ${
-                  showSystemPrompt || hasCustomPrompt
-                    ? 'text-amber-500/80 bg-amber-500/[0.06] border border-amber-500/15'
-                    : 'text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted/50 border border-transparent'
-                }`}
-                title={t('admin.ai_system_prompt_title')}
-                aria-label={t('admin.ai_system_prompt_title')}
-              >
-                <Settings2 className="w-3 h-3" />
-                <span className="hidden sm:inline">{t('admin.ai_system_prompt')}</span>
-              </button>
-            )}
+            <button
+              onClick={() => void openSystemPrompt()}
+              className={`flex cursor-pointer items-center gap-1.5 border px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-widest transition-colors ${
+                showSystemPrompt || hasCustomPrompt
+                  ? 'border-primary/30 bg-primary/10 text-primary'
+                  : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+              title={t('admin.ai_system_prompt_title')}
+              aria-label={t('admin.ai_system_prompt_title')}
+            >
+              <Settings2 className="w-3 h-3" />
+              <span className="hidden sm:inline">{t('admin.ai_system_prompt')}</span>
+            </button>
             {activeConversation && messages.length > 0 && (
               <button
                 onClick={handleClearConversation}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50 transition-all duration-200"
+                className="flex cursor-pointer items-center gap-1.5 border border-transparent px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 title={t('admin.ai_clear')}
                 aria-label={t('admin.ai_clear')}
               >
@@ -1347,97 +1579,33 @@ export default function AiAssistantPage() {
           </div>
         </div>
 
-        {/* System prompt editor */}
-        <AnimatePresence>
-          {showSystemPrompt && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="overflow-hidden border-b border-border/30 bg-muted/[0.06]"
-            >
-              <div className="px-5 py-4 max-w-[44rem] mx-auto">
-                <div className="flex items-center justify-between mb-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/[0.08]">
-                      <Settings2 className="h-3 w-3 text-amber-500/70" />
-                    </span>
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-                      {t('admin.ai_system_prompt_title')}
-                    </span>
-                    {hasCustomPrompt && !systemPromptDraft.trim() && (
-                      <span className="text-[10px] text-amber-500/60 font-medium">
-                        {t('admin.ai_system_prompt_revert')}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        setSystemPromptDraft('')
-                      }}
-                      className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted/40 transition-all duration-200 cursor-pointer"
-                      aria-label={t('admin.ai_system_prompt_reset')}
-                    >
-                      <RotateCcw className="w-2.5 h-2.5" />
-                      <span className="hidden sm:inline">{t('admin.ai_system_prompt_reset')}</span>
-                    </button>
-                    <button
-                      onClick={handleSaveSystemPrompt}
-                      disabled={savingPrompt}
-                      className="flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-semibold uppercase tracking-wider bg-foreground text-background hover:bg-foreground/90 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200 cursor-pointer"
-                    >
-                      {savingPrompt ? t('admin.ai_system_prompt_saving') : t('admin.ai_system_prompt_save')}
-                    </button>
-                  </div>
-                </div>
-                <textarea
-                  value={systemPromptDraft}
-                  onChange={(e) => setSystemPromptDraft(e.target.value)}
-                  placeholder={t('admin.ai_system_prompt_placeholder')}
-                  rows={3}
-                  className="w-full resize-none bg-background/60 border border-border/30 rounded-xl px-4 py-3 text-xs leading-relaxed outline-none placeholder:text-muted-foreground/20 focus:border-amber-500/25 focus:bg-background transition-all duration-200"
-                />
-                <p className="mt-2 text-[10px] text-muted-foreground/25 leading-relaxed">
-                  {t('admin.ai_system_prompt_hint')}
-                </p>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         {/* Messages area */}
         <div ref={messagesScrollRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto custom-scrollbar">
           {loadingConversation && activeConversation ? (
             <div className="flex h-full items-center justify-center text-muted-foreground/40">
               <Loader2 className="h-5 w-5 animate-spin" />
             </div>
-          ) : !activeConversation && messages.length === 0 && !sending ? (
+          ) : messages.length === 0 && !sending ? (
             <EmptyState t={t} textareaRef={textareaRef} setInput={setInput} />
           ) : (
-            <div className="max-w-[44rem] mx-auto px-5 py-6 space-y-4">
-              <AnimatePresence initial={false}>
-                {messages.map((msg) => (
-                  <motion.div
-                    key={msg.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.25, ease: 'easeOut' }}
-                  >
-                    <MessageBubble
-                      message={msg}
-                      copiedId={copiedId}
-                      onCopy={handleCopy}
-                      onQuote={handleQuote}
-                      onSaveImage={handleSaveMessageImage}
-                      onDownloadImage={handleDownloadMessageImage}
-                      persistedMessageId={persistedMessageIds[msg.id]}
-                      t={t}
-                    />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
+            <div className="mx-auto max-w-[44rem] space-y-8 px-6 py-8">
+              {messages.map((msg, index) => (
+                <MessageBubble
+                  key={msg.id}
+                  message={msg}
+                  usage={msg.role === 'user' ? findTurnUsage(messages, index) : readMessageUsage(msg.metadata)}
+                  copiedId={copiedId}
+                  onCopy={handleCopy}
+                  onQuote={handleQuote}
+                  onEditSubmit={msg.role === 'user' ? handleEditSubmit : undefined}
+                  onFork={msg.role === 'assistant' ? handleFork : undefined}
+                  onSaveImage={handleSaveMessageImage}
+                  onDownloadImage={handleDownloadMessageImage}
+                  persistedMessageId={persistedMessageIds[msg.id]}
+                  busy={sending || forkingId !== null}
+                  t={t}
+                />
+              ))}
 
               <div ref={messagesEndRef} />
             </div>
@@ -1445,9 +1613,9 @@ export default function AiAssistantPage() {
         </div>
 
         {/* Input area */}
-        <div className="border-t border-border/30 p-4 flex-shrink-0 bg-gradient-to-t from-muted/[0.03] to-background">
-          <div className="max-w-[44rem] mx-auto">
-            <div className="relative rounded-2xl border border-border/40 bg-muted/[0.12] shadow-[0_2px_12px_rgba(0,0,0,0.03)] transition-all duration-300 focus-within:border-amber-500/25 focus-within:shadow-[0_2px_16px_rgba(245,158,11,0.06)]">
+        <div className="flex-shrink-0 border-t border-border p-4">
+          <div className="mx-auto max-w-[44rem]">
+            <div className="relative border border-border bg-background transition-colors focus-within:border-primary">
               {/* Quote preview */}
               <AnimatePresence>
                 {quotedMessage && (
@@ -1458,14 +1626,14 @@ export default function AiAssistantPage() {
                     transition={{ duration: 0.2, ease: 'easeOut' }}
                     className="overflow-hidden"
                   >
-                    <div className="flex items-start gap-2.5 mx-4 mt-3 px-3 py-2.5 rounded-xl bg-amber-500/[0.04] border-l-2 border-amber-500/30">
-                      <Quote className="w-3 h-3 text-amber-500/40 flex-shrink-0 mt-0.5" />
-                      <p className="flex-1 text-xs text-muted-foreground/70 line-clamp-2 leading-relaxed italic">
+                    <div className="mx-4 mt-3 flex items-start gap-2.5 border-l-2 border-primary bg-muted/50 px-3 py-2">
+                      <Quote className="mt-0.5 h-3 w-3 flex-shrink-0 text-muted-foreground" />
+                      <p className="line-clamp-2 flex-1 text-[13px] leading-relaxed text-muted-foreground">
                         {quotedMessage.content}
                       </p>
                       <button
                         onClick={() => setQuotedMessage(null)}
-                        className="flex-shrink-0 p-0.5 text-muted-foreground/30 hover:text-muted-foreground transition-colors cursor-pointer"
+                        className="flex-shrink-0 p-0.5 text-muted-foreground transition-colors hover:text-foreground"
                         aria-label="Remove quote"
                       >
                         <X className="w-3 h-3" />
@@ -1485,9 +1653,9 @@ export default function AiAssistantPage() {
                     transition={{ duration: 0.2, ease: 'easeOut' }}
                     className="overflow-hidden"
                   >
-                    <div className="flex items-center gap-2 mx-4 mt-3 flex-wrap">
+                    <div className="mx-4 mt-3 flex flex-wrap items-center gap-2">
                       {attachedImages.map((img) => (
-                        <div key={img.id} className="relative group w-14 h-14 rounded-lg overflow-hidden border border-border/30 flex-shrink-0">
+                        <div key={img.id} className="group relative h-14 w-14 flex-shrink-0 overflow-hidden border border-border">
                           <img
                             src={img.previewUrl}
                             alt=""
@@ -1495,7 +1663,7 @@ export default function AiAssistantPage() {
                           />
                           <button
                             onClick={() => removeAttachedImage(img.id)}
-                            className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-background/80 text-muted-foreground/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                            className="absolute right-0.5 top-0.5 cursor-pointer bg-background/80 p-0.5 text-muted-foreground opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
                             aria-label="Remove image"
                           >
                             <X className="w-2.5 h-2.5" />
@@ -1521,7 +1689,7 @@ export default function AiAssistantPage() {
                 placeholder={t('admin.ai_input_placeholder')}
                 rows={1}
                 disabled={sending}
-                className="w-full resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground/30 disabled:opacity-40 px-4 pt-3.5 pb-1"
+                className="w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-sm leading-6 outline-none placeholder:text-muted-foreground/60 disabled:opacity-50"
                 style={{ maxHeight: 200 }}
               />
 
@@ -1531,7 +1699,7 @@ export default function AiAssistantPage() {
                     type="button"
                     onClick={handleSelectImages}
                     disabled={sending || uploadingImages}
-                    className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted/40 disabled:opacity-30 transition-all duration-200 cursor-pointer"
+                    className="flex cursor-pointer items-center gap-1.5 px-2 py-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
                     aria-label={imageMode ? t('admin.ai_image_reference') : t('admin.ai_attach_image')}
                     title={imageMode ? t('admin.ai_image_reference') : t('admin.ai_attach_image')}
                   >
@@ -1542,10 +1710,10 @@ export default function AiAssistantPage() {
                       type="button"
                       onClick={() => setImageMode((previous) => !previous)}
                       disabled={sending}
-                      className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-medium transition-all disabled:opacity-30 ${
+                      className={`flex cursor-pointer items-center gap-1.5 border px-2 py-1 text-[11px] font-bold uppercase tracking-widest transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                         imageMode
-                          ? 'border-amber-500/30 bg-amber-500/[0.06] text-amber-500'
-                          : 'border-border/30 text-muted-foreground/50 hover:text-muted-foreground'
+                          ? 'border-primary/30 bg-primary/10 text-primary'
+                          : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
                       }`}
                     >
                       <ImageIcon className="h-3 w-3" />
@@ -1566,7 +1734,7 @@ export default function AiAssistantPage() {
                         value={selectedImageSize}
                         onChange={(event) => setSelectedImageSize(event.target.value)}
                         disabled={sending}
-                        className="h-7 rounded-lg border border-border/30 bg-transparent px-2 text-[10px] text-muted-foreground outline-none disabled:opacity-30"
+                        className="h-7 border border-border bg-background px-2 text-[11px] text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         <option value="1024x1024">1:1</option>
                         <option value="1024x1792">9:16</option>
@@ -1578,7 +1746,7 @@ export default function AiAssistantPage() {
                       <ModelSelector models={chatModels} value={selectedModel} onChange={setSelectedModel} />
                     )
                   )}
-                  <span className="hidden sm:inline text-[10px] text-muted-foreground/25 tracking-wide">
+                  <span className="hidden text-[11px] text-muted-foreground/70 sm:inline">
                     Enter {t('admin.ai_newline')}
                   </span>
                 </div>
@@ -1586,7 +1754,7 @@ export default function AiAssistantPage() {
                   {sending ? (
                     <button
                       onClick={handleStop}
-                      className="flex-shrink-0 h-9 px-3 flex items-center gap-1.5 rounded-xl border border-border/40 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all duration-200 cursor-pointer"
+                      className="flex h-9 flex-shrink-0 cursor-pointer items-center gap-1.5 border border-border px-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       aria-label="Stop generating"
                     >
                       <StopCircle className="w-3.5 h-3.5" />
@@ -1594,9 +1762,9 @@ export default function AiAssistantPage() {
                     </button>
                   ) : (
                     <button
-                      onClick={handleSend}
+                      onClick={() => void handleSend()}
                       disabled={!canSend}
-                      className="flex-shrink-0 h-9 w-9 flex items-center justify-center rounded-xl bg-foreground text-background hover:bg-foreground/90 hover:shadow-[0_2px_8px_rgba(0,0,0,0.1)] disabled:opacity-15 disabled:cursor-not-allowed disabled:hover:shadow-none transition-all duration-200 cursor-pointer"
+                      className="flex h-9 w-9 flex-shrink-0 cursor-pointer items-center justify-center bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
                       aria-label="Send message"
                     >
                       <Send className="w-3.5 h-3.5" />
@@ -1607,12 +1775,92 @@ export default function AiAssistantPage() {
             </div>
           </div>
         </div>
+
+        {/* System prompt drawer — slides in from the right edge of the workspace */}
+        <AnimatePresence>
+          {showSystemPrompt && (
+            <motion.div
+              key="system-prompt-scrim"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: reduceMotion ? 0 : 0.15 }}
+              onPointerDown={() => setShowSystemPrompt(false)}
+              className="absolute inset-0 z-20 bg-black/10 dark:bg-black/40"
+            />
+          )}
+          {showSystemPrompt && (
+            <motion.aside
+              key="system-prompt-drawer"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="ai-system-prompt-title"
+              initial={{ x: reduceMotion ? 0 : '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: reduceMotion ? 0 : '100%' }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="absolute inset-y-0 right-0 z-30 flex w-full max-w-[26rem] flex-col border-l border-border bg-background"
+            >
+              <div className="flex h-14 flex-shrink-0 items-center justify-between gap-3 border-b border-border px-5">
+                <div className="flex min-w-0 items-baseline gap-2">
+                  <h2 id="ai-system-prompt-title" className="font-serif text-base leading-none tracking-tight">
+                    {t('admin.ai_system_prompt_title')}
+                  </h2>
+                  {hasCustomPrompt && !systemPromptDraft.trim() && (
+                    <span className="truncate text-[11px] text-muted-foreground">
+                      {t('admin.ai_system_prompt_revert')}
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowSystemPrompt(false)}
+                  className="flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  aria-label={t('common.close')}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              <div className="flex min-h-0 flex-1 flex-col gap-3 px-5 py-4">
+                <textarea
+                  value={systemPromptDraft}
+                  onChange={(e) => setSystemPromptDraft(e.target.value)}
+                  placeholder={EDITOR_AI_CHAT_SYSTEM_PROMPT}
+                  className="min-h-0 flex-1 resize-none border border-border bg-background px-3 py-2.5 text-[13px] leading-relaxed outline-none transition-colors placeholder:text-muted-foreground focus:border-primary"
+                  aria-label={t('admin.ai_system_prompt_title')}
+                />
+                <p className="flex-shrink-0 text-[11px] leading-relaxed text-muted-foreground">
+                  {t('admin.ai_system_prompt_hint')}
+                </p>
+              </div>
+
+              <div className="flex flex-shrink-0 items-center justify-end gap-2 border-t border-border px-5 py-3">
+                <button
+                  onClick={() => setSystemPromptDraft(EDITOR_AI_CHAT_SYSTEM_PROMPT)}
+                  className="flex cursor-pointer items-center gap-1 border border-border px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  aria-label={t('admin.ai_system_prompt_reset')}
+                >
+                  <RotateCcw className="w-2.5 h-2.5" />
+                  {t('admin.ai_system_prompt_reset')}
+                </button>
+                <button
+                  onClick={handleSaveSystemPrompt}
+                  disabled={savingPrompt}
+                  className="flex cursor-pointer items-center gap-1.5 bg-primary px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {savingPrompt ? t('admin.ai_system_prompt_saving') : t('admin.ai_system_prompt_save')}
+                </button>
+              </div>
+            </motion.aside>
+          )}
+        </AnimatePresence>
       </div>
 
       {conversationMenu && typeof document !== 'undefined' && createPortal(
         <div
           role="menu"
-          className="fixed z-[100] min-w-40 rounded-lg border border-border bg-popover p-1 shadow-xl"
+          className="fixed z-[100] min-w-44 border border-border bg-popover p-1 shadow-lg"
           style={{ left: conversationMenu.x, top: conversationMenu.y }}
           onPointerDown={(event) => event.stopPropagation()}
         >
@@ -1621,7 +1869,7 @@ export default function AiAssistantPage() {
             role="menuitem"
             disabled={Boolean(generatingTitleId)}
             onClick={() => void handleGenerateConversationTitle(conversationMenu.id)}
-            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-popover-foreground transition-colors hover:bg-muted disabled:cursor-default disabled:opacity-50"
+            className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-[13px] text-popover-foreground transition-colors hover:bg-muted disabled:cursor-default disabled:opacity-50"
           >
             {generatingTitleId === conversationMenu.id
               ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1632,7 +1880,7 @@ export default function AiAssistantPage() {
             type="button"
             role="menuitem"
             onClick={() => startRenamingConversation(conversationMenu.id, 'sidebar')}
-            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-popover-foreground transition-colors hover:bg-muted"
+            className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-[13px] text-popover-foreground transition-colors hover:bg-muted"
           >
             <Pencil className="h-3.5 w-3.5" />
             {t('admin.ai_rename_conversation')}
@@ -1656,64 +1904,42 @@ function EmptyState({
   setInput: (value: string) => void
 }) {
   const prompts = [
-    { text: t('admin.ai_prompt_narrative'), order: '01' },
-    { text: t('admin.ai_prompt_describe'), order: '02' },
-    { text: t('admin.ai_prompt_title'), order: '03' },
+    t('admin.ai_prompt_narrative'),
+    t('admin.ai_prompt_describe'),
+    t('admin.ai_prompt_title'),
   ]
 
   return (
-    <div className="h-full flex flex-col items-center justify-center px-6 pb-16">
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.23, 0.36, 0.18, 0.97] }}
-        className="text-center max-w-md"
-      >
-        {/* Decorative ring */}
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: 0.1, duration: 0.5, ease: 'easeOut' }}
-          className="mx-auto mb-8"
-        >
-          <div className="relative inline-flex">
-            <span className="absolute inset-0 rounded-full bg-amber-500/[0.04] blur-xl" />
-            <span className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500/[0.06] to-transparent ring-1 ring-amber-500/10 shadow-[0_4px_24px_rgba(245,158,11,0.06)]">
-              <Sparkles className="h-8 w-8 text-amber-500/30" />
-            </span>
-          </div>
-        </motion.div>
-
-        <h2 className="font-serif text-2xl tracking-tight mb-3 text-foreground/90">
+    <div className="flex h-full flex-col items-center justify-center px-6 pb-12">
+      <div className="w-full max-w-xl">
+        <h2 className="font-serif text-3xl leading-tight tracking-tight">
           {t('admin.ai_assistant')}
         </h2>
-        <p className="text-sm text-muted-foreground/50 leading-relaxed mb-10 max-w-sm mx-auto">
+        <p className="mt-3 max-w-[46ch] text-sm leading-relaxed text-muted-foreground">
           {t('admin.ai_welcome')}
         </p>
 
-        <div className="space-y-2">
-          {prompts.map((prompt, i) => (
-            <motion.button
-              key={prompt.text}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 + i * 0.08, duration: 0.35, ease: 'easeOut' }}
+        <p className="mb-2 mt-9 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+          {t('admin.ai_starters')}
+        </p>
+        <div className="border-t border-border">
+          {prompts.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
               onClick={() => {
-                setInput(prompt.text)
+                setInput(prompt)
                 textareaRef.current?.focus()
               }}
-              className="group flex items-center gap-4 w-full px-4 py-3 rounded-xl border border-border/30 hover:border-amber-500/20 hover:bg-amber-500/[0.03] transition-all duration-300 text-left cursor-pointer"
+              className="group flex w-full cursor-pointer items-center border-b border-border px-1 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
-              <span className="flex-shrink-0 w-7 text-right text-[10px] font-mono font-medium text-muted-foreground/20 group-hover:text-amber-500/40 transition-colors duration-300">
-                {prompt.order}
+              <span className="text-[13px] leading-relaxed text-muted-foreground transition-colors group-hover:text-foreground">
+                {prompt}
               </span>
-              <span className="text-sm text-muted-foreground/60 group-hover:text-foreground/80 transition-colors duration-300">
-                {prompt.text}
-              </span>
-            </motion.button>
+            </button>
           ))}
         </div>
-      </motion.div>
+      </div>
     </div>
   )
 }
@@ -1722,38 +1948,108 @@ function EmptyState({
 
 function MessageBubble({
   message,
+  usage,
   copiedId,
   onCopy,
   onQuote,
+  onEditSubmit,
+  onFork,
   onSaveImage,
   onDownloadImage,
   persistedMessageId,
+  busy,
   t,
 }: {
   message: EditorAiMessageDto
+  usage?: EditorAiUsage | null
   copiedId: string | null
   onCopy: (content: string, id: string) => void
   onQuote: (msg: EditorAiMessageDto) => void
+  onEditSubmit?: (message: EditorAiMessageDto, content: string) => Promise<void>
+  onFork?: (message: EditorAiMessageDto) => void
   onSaveImage: (messageId: string, imageUrl: string) => Promise<void>
   onDownloadImage: (imageUrl: string) => Promise<void>
   persistedMessageId?: string
+  busy?: boolean
   t: (key: string) => string
 }) {
   const isUser = message.role === 'user'
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const editRef = useRef<HTMLTextAreaElement>(null)
 
   const messageImages = getMessageImages(message.metadata)
   const saveMessageId = persistedMessageId || message.id
+  const usageLabel = usage ? formatUsageSummary(usage, t, isUser ? 'user' : 'assistant') : ''
+  const usageDetail = usage ? formatUsageDetail(usage, t) : ''
+
+  useEffect(() => {
+    if (!editing) return
+    const node = editRef.current
+    if (!node) return
+    node.focus()
+    node.style.height = 'auto'
+    node.style.height = `${Math.min(node.scrollHeight, 200)}px`
+  }, [editing])
+
+  const beginEdit = () => {
+    setDraft(message.content)
+    setEditing(true)
+  }
+
+  const submitEdit = async () => {
+    if (!onEditSubmit || busy) return
+    const next = draft.trim()
+    if (!next) return
+    // The page notifies on failure; keep the editor open so the draft survives.
+    try {
+      await onEditSubmit(message, next)
+      setEditing(false)
+    } catch {
+      /* keep editing */
+    }
+  }
+
+  const actionClass = 'inline-flex cursor-pointer items-center gap-1 px-1 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:cursor-default disabled:opacity-40'
 
   if (isUser) {
     return (
-      <div className="flex gap-3 items-start justify-end">
-        <div className="max-w-[78%] min-w-0">
-          <div className="relative rounded-2xl rounded-tr-md bg-foreground/[0.06] border border-border/20 px-4 py-3">
-            <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/85 break-words">
-              {message.content}
-            </div>
+      <div className="flex justify-end">
+        <div className="min-w-0 max-w-[85%]">
+          <div className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            {t('admin.ai_you')}
+          </div>
+          <div className="border-l-2 border-primary bg-muted/50 px-4 py-3">
+            {editing ? (
+              <textarea
+                ref={editRef}
+                value={draft}
+                onChange={(event) => {
+                  setDraft(event.target.value)
+                  const node = event.currentTarget
+                  node.style.height = 'auto'
+                  node.style.height = `${Math.min(node.scrollHeight, 200)}px`
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault()
+                    void submitEdit()
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault()
+                    setEditing(false)
+                  }
+                }}
+                rows={1}
+                className="w-full resize-none bg-transparent text-sm leading-relaxed text-foreground outline-none"
+                aria-label={t('admin.ai_edit')}
+              />
+            ) : (
+              <div className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
+                {message.content}
+              </div>
+            )}
             {messageImages.length > 0 && (
-              <div className="mt-2.5 flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 {messageImages.map((image, index) => (
                   <MessageImage
                     key={`${image.url}-${index}`}
@@ -1767,108 +2063,165 @@ function MessageBubble({
               </div>
             )}
           </div>
-          <div className="mt-1 flex items-center justify-end">
-            <button
-              onClick={() => onQuote(message)}
-              className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors cursor-pointer rounded-md"
-              aria-label="Quote"
-            >
-              <Quote className="w-2.5 h-2.5" />
-            </button>
-          </div>
-        </div>
-        <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-muted/40 flex items-center justify-center ring-1 ring-border/20">
-          <span className="text-[10px] font-semibold text-muted-foreground/50">Me</span>
+          {editing ? (
+            <div className="mt-1.5 flex items-center gap-3">
+              <span className="mr-auto text-[11px] text-muted-foreground">{t('admin.ai_edit_hint')}</span>
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                className={actionClass}
+              >
+                {t('admin.ai_edit_cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitEdit()}
+                disabled={busy || !draft.trim()}
+                className={actionClass}
+              >
+                <Send className="h-3 w-3" />
+                {t('admin.ai_edit_send')}
+              </button>
+            </div>
+          ) : (
+            <div className="mt-1.5 flex items-center gap-3">
+              {usageLabel && (
+                <span
+                  className="mr-auto text-[11px] tabular-nums text-muted-foreground"
+                  title={usageDetail}
+                >
+                  {usageLabel}
+                </span>
+              )}
+              {onEditSubmit && (
+                <button
+                  type="button"
+                  onClick={beginEdit}
+                  disabled={busy}
+                  className={actionClass}
+                  aria-label={t('admin.ai_edit')}
+                >
+                  <Pencil className="h-3 w-3" />
+                  {t('admin.ai_edit')}
+                </button>
+              )}
+              <button
+                onClick={() => onQuote(message)}
+                className={actionClass}
+                aria-label={t('admin.ai_quote')}
+              >
+                <Quote className="h-3 w-3" />
+                {t('admin.ai_quote')}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     )
   }
 
-  // Assistant message
+  // Assistant message — the answer reads as the main column of the sheet,
+  // the label sits on the margin rule.
   return (
-    <div className="flex gap-3 items-start">
-      <div className="flex-shrink-0 mt-0.5 w-8 h-8 rounded-xl bg-amber-500/[0.08] flex items-center justify-center ring-1 ring-amber-500/10">
-        <Sparkles className="h-3.5 w-3.5 text-amber-500/70" />
+    <div className="border-l border-border pl-4">
+      <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+        <span>AI</span>
+        {message.status === 'streaming' && (
+          <span className="text-primary">{t('admin.ai_thinking')}</span>
+        )}
       </div>
-      <div className="max-w-[78%] min-w-0">
-        <div className="relative rounded-2xl rounded-tl-md bg-gradient-to-br from-muted/20 to-transparent border border-border/30 px-4 py-3">
-          {/* Subtle warm glow */}
-          <div className="absolute inset-0 rounded-2xl rounded-tl-md bg-gradient-to-br from-amber-500/[0.02] to-transparent pointer-events-none" />
-          <div className="relative text-sm leading-relaxed text-foreground/90 break-words">
-            {message.status === 'streaming' && !message.content ? (
-              <div className="flex items-center gap-2.5">
-                <span className="text-xs text-muted-foreground/60">{t('admin.ai_thinking')}</span>
-                <span className="flex gap-1">
-                  {[0, 1, 2].map((index) => (
-                    <span
-                      key={index}
-                      className="w-1 h-1 rounded-full bg-amber-500/30 animate-bounce"
-                      style={{ animationDelay: `${index * 150}ms` }}
-                    />
-                  ))}
-                </span>
-              </div>
-            ) : (
-              <div className="ai-markdown">
-                <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
-                {message.status === 'streaming' && (
-                  <span className="inline-block w-[3px] h-4 bg-amber-500/60 animate-pulse ml-0.5 align-middle rounded-full" />
-                )}
-              </div>
+
+      <div className="break-words text-sm leading-relaxed text-foreground">
+        {message.status === 'streaming' && !message.content ? (
+          <span className="flex gap-1">
+            {[0, 1, 2].map((index) => (
+              <span
+                key={index}
+                className="h-1 w-1 animate-bounce rounded-full bg-primary/50"
+                style={{ animationDelay: `${index * 150}ms` }}
+              />
+            ))}
+          </span>
+        ) : (
+          <div className="ai-markdown">
+            <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+            {message.status === 'streaming' && (
+              <span className="ml-0.5 inline-block h-4 w-[3px] animate-pulse rounded-full bg-primary align-middle" />
             )}
-          </div>
-          {messageImages.length > 0 && (
-            <div className="relative mt-2.5 flex flex-wrap gap-2">
-              {messageImages.map((image, index) => (
-                  <MessageImage
-                    key={`${image.url}-${index}`}
-                    image={image}
-                    alt=""
-                    onSave={() => onSaveImage(saveMessageId, image.url)}
-                    onDownload={() => onDownloadImage(image.url)}
-                    t={t}
-                  />
-                ))}
-            </div>
-          )}
-
-          {message.status === 'failed' && message.error && (
-            <div className="relative mt-2.5 rounded-xl border border-destructive/15 bg-destructive/[0.04] px-3 py-2 text-xs text-destructive/80 leading-relaxed">
-              {message.error}
-            </div>
-          )}
-        </div>
-
-        {message.content && (
-          <div className="mt-1.5 flex items-center gap-0.5">
-            <button
-              onClick={() => onCopy(message.content, message.id)}
-              className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] text-muted-foreground/30 hover:text-muted-foreground/70 transition-colors cursor-pointer rounded-md"
-              aria-label="Copy"
-            >
-              {copiedId === message.id ? (
-                <>
-                  <Check className="w-2.5 h-2.5 text-emerald-500/70" />
-                  <span className="text-emerald-500/70">{t('admin.ai_copied')}</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-2.5 h-2.5" />
-                  <span>{t('admin.ai_copy')}</span>
-                </>
-              )}
-            </button>
-            <button
-              onClick={() => onQuote(message)}
-              className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] text-muted-foreground/30 hover:text-muted-foreground/70 transition-colors cursor-pointer rounded-md"
-              aria-label="Quote"
-            >
-              <Quote className="w-2.5 h-2.5" />
-              <span>{t('admin.ai_quote')}</span>
-            </button>
           </div>
         )}
       </div>
+
+      {messageImages.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {messageImages.map((image, index) => (
+            <MessageImage
+              key={`${image.url}-${index}`}
+              image={image}
+              alt=""
+              onSave={() => onSaveImage(saveMessageId, image.url)}
+              onDownload={() => onDownloadImage(image.url)}
+              t={t}
+            />
+          ))}
+        </div>
+      )}
+
+      {message.status === 'failed' && message.error && (
+        <div className="mt-3 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-[13px] leading-relaxed text-destructive">
+          {message.error}
+        </div>
+      )}
+
+      {message.content && (
+        <div className="mt-2 flex items-center gap-3">
+          <button
+            onClick={() => onCopy(message.content, message.id)}
+            className="inline-flex cursor-pointer items-center gap-1 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+            aria-label={t('admin.ai_copy')}
+          >
+            {copiedId === message.id ? (
+              <>
+                <Check className="h-3 w-3 text-green-600" />
+                <span className="text-green-600">{t('admin.ai_copied')}</span>
+              </>
+            ) : (
+              <>
+                <Copy className="h-3 w-3" />
+                <span>{t('admin.ai_copy')}</span>
+              </>
+            )}
+          </button>
+          <button
+            onClick={() => onQuote(message)}
+            className="inline-flex cursor-pointer items-center gap-1 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+            aria-label={t('admin.ai_quote')}
+          >
+            <Quote className="h-3 w-3" />
+            <span>{t('admin.ai_quote')}</span>
+          </button>
+          {onFork && (
+            <button
+              type="button"
+              onClick={() => onFork(message)}
+              disabled={busy}
+              className="inline-flex cursor-pointer items-center gap-1 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:cursor-default disabled:opacity-40"
+              aria-label={t('admin.ai_fork')}
+            >
+              <GitBranch className="h-3 w-3" />
+              <span>{t('admin.ai_fork')}</span>
+            </button>
+          )}
+          {usageLabel && (
+            <span
+              className="text-[11px] tabular-nums text-muted-foreground"
+              title={usageDetail}
+            >
+              {usageLabel}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -1924,11 +2277,11 @@ function ModelSelector({
       <button
         type="button"
         onClick={handleToggle}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border/30 text-[10px] font-medium text-muted-foreground/50 hover:text-muted-foreground hover:border-border/50 hover:bg-muted/30 transition-all duration-200 cursor-pointer"
+        className="flex cursor-pointer items-center gap-1.5 border border-border px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
         {icon === 'image'
-          ? <ImageIcon className="w-3 h-3 text-amber-500/50" />
-          : <Sparkles className="w-3 h-3 text-amber-500/40" />}
+          ? <ImageIcon className="h-3 w-3 text-muted-foreground" />
+          : <Sparkles className="h-3 w-3 text-muted-foreground" />}
         <span className="max-w-20 truncate">{selected?.label ?? 'Model'}</span>
         <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
@@ -1940,25 +2293,25 @@ function ModelSelector({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 4, scale: 0.98 }}
             transition={{ duration: 0.15, ease: 'easeOut' }}
-            className="absolute bottom-full left-0 mb-1.5 w-56 bg-background border border-border/40 rounded-xl shadow-[0_16px_40px_rgba(0,0,0,0.08)] overflow-hidden z-20 ring-1 ring-border/10"
+            className="absolute bottom-full left-0 z-20 mb-1.5 w-56 overflow-hidden border border-border bg-popover shadow-lg"
           >
             {/* Search */}
-            <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border/30">
-              <Search className="w-3 h-3 text-muted-foreground/30 flex-shrink-0" />
+            <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
+              <Search className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
               <input
                 ref={searchRef}
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search models..."
-                className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground/20 text-foreground/80"
+                className="flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground/60"
               />
             </div>
 
             {/* Options */}
             <div className="max-h-44 overflow-y-auto custom-scrollbar py-1">
               {filtered.length === 0 ? (
-                <div className="px-3 py-3 text-[10px] text-muted-foreground/30 text-center">
+                <div className="px-3 py-3 text-center text-[11px] text-muted-foreground">
                   No results
                 </div>
               ) : (
@@ -1971,14 +2324,14 @@ function ModelSelector({
                         onChange(m.id)
                         setIsOpen(false)
                       }}
-                      className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                      className={`flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left text-[13px] transition-colors ${
                         isSelected
-                          ? 'bg-amber-500/[0.06] text-amber-600 dark:text-amber-400'
-                          : 'text-foreground/70 hover:bg-muted/40'
+                          ? 'bg-muted text-foreground'
+                          : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                       }`}
                     >
                       <span className="truncate">{m.label}</span>
-                      {isSelected && <Check className="w-3 h-3 flex-shrink-0 text-amber-500/70" />}
+                      {isSelected && <Check className="h-3 w-3 flex-shrink-0 text-primary" />}
                     </button>
                   )
                 })
@@ -1994,20 +2347,19 @@ function ModelSelector({
 /* Scope Badge */
 
 const SCOPE_LABELS: Record<string, { label: string; color: string }> = {
-  'ai-assistant': { label: 'Chat', color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' },
-  'story-editor': { label: 'Story', color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' },
-  'blog-editor': { label: 'Blog', color: 'bg-sky-500/10 text-sky-600 dark:text-sky-400' },
+  'ai-assistant': { label: 'Chat', color: 'bg-primary/10 text-primary' },
+  'story-editor': { label: 'Story', color: 'bg-muted text-foreground' },
+  'blog-editor': { label: 'Blog', color: 'bg-muted text-muted-foreground' },
 }
 
 function ScopeBadge({ scopeId }: { scopeId: string }) {
   const config = SCOPE_LABELS[scopeId] ?? {
     label: scopeId.length > 12 ? `${scopeId.slice(0, 12)}...` : scopeId,
-    color: 'bg-muted text-muted-foreground/50',
+    color: 'bg-muted text-muted-foreground',
   }
 
   return (
-    <span className={`inline-flex items-center gap-1 px-1.5 py-px rounded-md text-[9px] font-medium leading-4 ${config.color}`}>
-      <span className="w-1 h-1 rounded-full bg-current/30" />
+    <span className={`inline-flex items-center px-1.5 py-px text-[10px] font-bold uppercase tracking-[0.14em] leading-4 ${config.color}`}>
       {config.label}
     </span>
   )

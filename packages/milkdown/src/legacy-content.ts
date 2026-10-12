@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm'
 import remarkStringify from 'remark-stringify'
 import { legacyHtmlDocument } from './legacy-html'
 import { legacyCss, legacyRecord, legacyString, legacyTextStyle } from './legacy-style'
-import { mediaToAttributes, normalizeMedia, safeMediaUrl } from './media'
+import { DEFAULT_MEDIA_ALIGN, mediaToAttributes, normalizeMedia, parseMediaAlign, safeMediaUrl } from './media'
 import { normalizeMediaEmbed, parseMediaEmbed } from './media-embed'
 import { textStyleToAttributes } from './text-style'
 import type { AlignType, BlockContent, Paragraph, PhrasingContent, RootContent, Text } from 'mdast'
@@ -90,7 +90,10 @@ function mediaBlock(node: LegacyNode): BlockContent | null {
   if (node.type === 'image') {
     const src = legacyString(attrs.src)
     if (/^(?:uploading|blob):/i.test(src)) return mediaNode({ kind: 'upload', title: legacyString(attrs.alt), uploadId: src, status: 'failed' })
-    return mediaNode({ kind: 'image', src, photoId: legacyString(attrs.photoId), title: legacyString(attrs.alt) || legacyString(attrs.title), caption: legacyString(attrs.caption), width: Number.parseFloat(String(attrs.width ?? '')) })
+    // 图片自身的对齐（老 web 版写在 img 的 data-align / align 上，见 legacy-html）。
+    // 读不到就不写：媒体卡的默认值本来就是居中，写出来只是给指令添噪音。
+    const align = parseMediaAlign(attrs.align)
+    return mediaNode({ kind: 'image', src, photoId: legacyString(attrs.photoId), title: legacyString(attrs.alt) || legacyString(attrs.title), caption: legacyString(attrs.caption), width: Number.parseFloat(String(attrs.width ?? '')), ...(align ? { align } : {}) })
   }
   if (node.type === 'imageUploadPlaceholder') return mediaNode({ kind: 'upload', uploadId: legacyString(attrs.uploadId), title: legacyString(attrs.fileName), status: 'failed' })
   if (['mediaEmbed', 'musicEmbed', 'spotifyEmbed', 'iframe'].includes(node.type)) {
@@ -113,6 +116,25 @@ function aligned(nodes: BlockContent[], attrs: Record<string, unknown>): BlockCo
   return nodes.length && ['left', 'center', 'right', 'justify'].includes(String(align))
     ? [{ type: 'containerDirective', name: 'block-style', attributes: { align: String(align) }, children: nodes }]
     : nodes
+}
+
+/**
+ * 把块级对齐同时落到块里那些**自己没表态**的图片卡上。
+ *
+ * tiptap 里图片的对齐就记在它所在的段落上（插入图片时包一层 `textAlign: 'center'` 的段落），
+ * 迁移后图片是独立卡片、段落对齐变成外面套的 block-style 容器，等于把「这张图怎么摆」说在
+ * 容器上：用户之后删掉容器、或把图拖到别处，对齐就悄悄没了。所以这里复制一份到卡片自己身上 ——
+ * 两条路说的是同一件事，不会互相矛盾（容器那段 CSS 只在卡片没写 align 时才生效）。
+ *
+ * 居中不写：媒体卡的默认值本来就是居中，写出来只是给指令添噪音。
+ */
+function inheritBlockAlign(nodes: BlockContent[], attrs: Record<string, unknown>): BlockContent[] {
+  const align = parseMediaAlign(attrs.textAlign)
+  if (!align || align === DEFAULT_MEDIA_ALIGN) return nodes
+  return nodes.map((node) => node.type === 'leafDirective' && node.name === 'media'
+    && node.attributes?.kind === 'image' && !node.attributes.align
+    ? { ...node, attributes: { ...node.attributes, align } }
+    : node)
 }
 
 function textBlocks(node: LegacyNode, style: TextStyleAttributes): BlockContent[] {
@@ -201,7 +223,13 @@ function blocks(nodes: LegacyNode[], inherited: TextStyleAttributes = { font: nu
     else if (childrenOf(node).length) converted = blocks(childrenOf(node), style)
     else if (node.type === 'doc' || node.type === 'div') converted = []
     else converted = [{ type: 'code', lang: 'json', value: JSON.stringify(node, null, 2) }]
-    result.push(...aligned(converted, attrs))
+    // tiptap 的图组（拼图）把「整组怎么摆」写在自己的 `data-align` 上，JSON 里的键名是 align
+    // 而不是 textAlign。对组来说这就是它的块级对齐，并进这里与段落上的 textAlign 同路。
+    const blockAttrs = node.type === 'imageGroup' && attrs.align
+      ? { ...attrs, textAlign: attrs.textAlign ?? attrs.align }
+      : attrs
+    // 容器负责「这一段怎么摆」，卡片的 align 负责「这张图怎么摆」：两者都写上（见 inheritBlockAlign）
+    result.push(...aligned(inheritBlockAlign(converted, blockAttrs), blockAttrs))
   }
   flush()
   return result

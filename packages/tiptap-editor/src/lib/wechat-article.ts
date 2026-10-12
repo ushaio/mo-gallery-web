@@ -5,6 +5,15 @@ export interface WechatArticleSource {
 
 export interface WechatArticleFormatOptions {
   resolveImageUrl?: (rawUrl: string, photoId?: string | null) => string
+  /**
+   * 注入内联样式**之后**、序列化之前，对整棵 DOM 做最后的调整。
+   *
+   * 这一趟里 class 已经被摘掉（公众号不认类名，留着只是噪音），所以钩子只能靠
+   * 保留下来的 `data-*` / 标签结构识别元素。用途是把「类名 + 外部 CSS 驱动」的排版
+   * 折算成内联样式 —— 否则那些排版在粘贴后会整片塌掉（如 Milkdown 的拼图网格）。
+   * 这里只暴露 DOM，不掺任何宿主知识，具体折算由调用方（各宿主自己的模块）提供。
+   */
+  decorate?: (root: HTMLElement) => void
 }
 
 const WECHAT_STYLES: Record<string, string> = {
@@ -125,6 +134,9 @@ export function formatWechatArticleHtml(source: WechatArticleSource, options: We
   for (let index = 0; index < documentNode.body.childNodes.length; index += 1) {
     walkNode(documentNode.body.childNodes[index], options, false)
   }
+  // 内联样式都注入完之后再收尾：这一趟拿到的是「已去 class」的 DOM，钩子里的折算后写进 style
+  // 才不会被上面的按标签规则盖回去（同名属性后者胜）。
+  options.decorate?.(documentNode.body)
 
   const titleHtml = source.title.trim()
     ? `<h1 style="${WECHAT_STYLES.h1};text-align:center">${escapeHtml(source.title.trim())}</h1>`

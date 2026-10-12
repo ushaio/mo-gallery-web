@@ -10,6 +10,7 @@ export interface SelectOption {
 }
 
 type UiVariant = 'admin' | 'site'
+type UiSize = 'md' | 'sm'
 
 interface CustomSelectProps {
   value: string
@@ -18,7 +19,10 @@ interface CustomSelectProps {
   placeholder?: string
   disabled?: boolean
   uiVariant?: UiVariant
+  /** `sm` 为紧凑尺寸：触发器 32px 高，用于与 32px 搜索框/图标按钮同排的紧凑工具栏 */
+  uiSize?: UiSize
   className?: string
+  ariaLabel?: string
 }
 
 export function CustomSelect({
@@ -28,7 +32,9 @@ export function CustomSelect({
   placeholder = '请选择',
   disabled = false,
   uiVariant = 'admin',
+  uiSize = 'md',
   className = '',
+  ariaLabel,
 }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -39,10 +45,12 @@ export function CustomSelect({
     : placeholder
 
   const ui = useMemo(() => {
+    const compact = uiSize === 'sm'
     if (uiVariant === 'site') {
       return {
-        trigger:
-          'min-h-10 px-3 py-2 bg-background border border-border rounded-md flex items-center justify-between cursor-pointer transition-colors hover:border-primary',
+        trigger: compact
+          ? 'h-8 px-3 py-0 bg-background border border-border rounded-md flex items-center justify-between cursor-pointer transition-colors hover:border-primary'
+          : 'min-h-10 px-3 py-2 bg-background border border-border rounded-md flex items-center justify-between cursor-pointer transition-colors hover:border-primary',
         label: 'text-sm',
         dropdown:
           'absolute z-40 w-full mt-1 bg-background border border-border rounded-md shadow-xl max-h-56 overflow-y-auto',
@@ -53,8 +61,9 @@ export function CustomSelect({
     }
 
     return {
-      trigger:
-        'min-h-10 px-3 py-2 bg-background border-b border-border flex items-center justify-between cursor-pointer transition-colors hover:border-primary',
+      trigger: compact
+        ? 'h-8 px-3 py-0 bg-background border-b border-border flex items-center justify-between cursor-pointer transition-colors hover:border-primary'
+        : 'min-h-10 px-3 py-2 bg-background border-b border-border flex items-center justify-between cursor-pointer transition-colors hover:border-primary',
       label: 'text-xs font-mono',
       dropdown:
         'absolute z-40 w-full mt-1 bg-background border border-border shadow-2xl max-h-48 overflow-y-auto',
@@ -62,7 +71,7 @@ export function CustomSelect({
         'w-full text-left px-4 py-3 text-xs font-bold uppercase tracking-wider hover:bg-primary hover:text-primary-foreground flex items-center justify-between group transition-colors',
       optionActive: 'bg-primary/10 text-primary',
     }
-  }, [uiVariant])
+  }, [uiVariant, uiSize])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -82,6 +91,15 @@ export function CustomSelect({
     <div ref={containerRef} className={`relative ${className}`}>
       <div
         className={`${ui.trigger} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        role="button"
+        tabIndex={disabled ? -1 : 0}
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (!disabled) setIsOpen(!isOpen) }
+          if (event.key === 'Escape' && isOpen) { event.preventDefault(); event.stopPropagation(); setIsOpen(false) }
+        }}
         onClick={() => !disabled && setIsOpen(!isOpen)}
       >
         <span className={ui.label}>{displayLabel}</span>
@@ -90,10 +108,13 @@ export function CustomSelect({
         />
       </div>
       {isOpen && (
-        <div className={ui.dropdown}>
+        <div className={ui.dropdown} role="listbox" aria-label={ariaLabel}>
           {options.map((option) => (
             <button
               key={option.value}
+              type="button"
+              role="option"
+              aria-selected={value === option.value}
               onClick={() => {
                 onChange(option.value)
                 setIsOpen(false)

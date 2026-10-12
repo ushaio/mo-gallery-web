@@ -522,6 +522,49 @@ export function LibraryPhotoWorkspace({ token, tags, albums, settings, initialFi
     }
   }, [mergePhoto, notify, onUnauthorized, t, token, updatingIds])
 
+  // 数字快捷键：6 切换精选（照片模型没有星级字段，1-5 不适用）。多选时按「全部已精选 ⇒
+  // 取消，否则全部精选」批量切换——精选暂无批量端点，按小块并发调用单张更新接口（与
+  // 桌面端云库一致）；无多选时作用于右侧信息栏当前照片。预览浮层与弹窗打开时不拦截。
+  // 位置注意：引用了 mergePhoto / runPhotoUpdate，必须放在它们声明之后（TDZ）。
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== '6') return
+      const target = event.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return
+      if (previewPhoto || deleteRequest || batchDialogOpen) return
+      if (!token) return
+      event.preventDefault()
+      if (selectedIds.size > 0) {
+        const photoIds = Array.from(selectedIds)
+        const allFeatured = photoIds.every((id) => photos.find((photo) => photo.id === id)?.isFeatured)
+        const featured = !allFeatured
+        void (async () => {
+          setBatchSaving(true)
+          let failed = 0
+          const CHUNK_SIZE = 5
+          for (let start = 0; start < photoIds.length; start += CHUNK_SIZE) {
+            const results = await Promise.allSettled(photoIds.slice(start, start + CHUNK_SIZE).map((id) => updatePhoto({ token, id, patch: { isFeatured: featured } })))
+            for (const result of results) {
+              if (result.status === 'fulfilled') {
+                mergePhoto(result.value)
+              } else {
+                failed += 1
+                if (result.reason instanceof ApiUnauthorizedError) onUnauthorized(result.reason)
+              }
+            }
+          }
+          setBatchSaving(false)
+          if (failed === 0) notify(t('admin.notify_success'))
+          else notify(t('common.error'), 'error')
+        })()
+        return
+      }
+      if (selectedPhoto) void runPhotoUpdate(selectedPhoto, { isFeatured: !selectedPhoto.isFeatured })
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [batchDialogOpen, deleteRequest, mergePhoto, notify, onUnauthorized, photos, previewPhoto, runPhotoUpdate, selectedIds, selectedPhoto, t, token])
+
   const requestDelete = useCallback(async (ids: string[]) => {
     if (!token || ids.length === 0) return
     setContextMenu(null)

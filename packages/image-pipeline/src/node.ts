@@ -1,5 +1,5 @@
 import ExifReader from 'exifreader'
-import sharp from 'sharp'
+import sharp, { type Metadata } from 'sharp'
 
 import { parseExifDate } from './exif-json'
 import {
@@ -450,7 +450,7 @@ export async function generateThumbnailBuffer(buffer: Buffer): Promise<Buffer> {
 export async function getMetadataAndThumbnail(
   buffer: Buffer,
   options: { generateThumbnail: boolean },
-): Promise<{ metadata: sharp.Metadata; thumbnailBuffer: Buffer | null }> {
+): Promise<{ metadata: Metadata; thumbnailBuffer: Buffer | null }> {
   const sharpInstance = sharp(buffer)
   const [metadata, thumbnailBuffer] = await Promise.all([
     sharpInstance.metadata(),

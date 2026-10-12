@@ -45,10 +45,10 @@
 .milkdown-editor .milkdown .top-bar-item span { display: flex; }
 .milkdown-editor .milkdown .top-bar-item svg { width: 18px; height: 18px; }
 .milkdown-editor .milkdown .top-bar-item svg[stroke] { fill: none; }
-.milkdown-editor .milkdown .top-bar-item:has([data-mo-color-trigger]) { position: relative; width: 32px; height: 30px; margin: 0; border-radius: 5px; }
+.milkdown-editor .milkdown .top-bar-item:has([data-mo-color-trigger]) { position: relative; width: 28px; height: 28px; margin: 1px; border-radius: 5px; }
 .milkdown-editor .milkdown .top-bar-item:has([data-mo-color-trigger]):hover { background: var(--crepe-color-hover, color-mix(in srgb, var(--crepe-color-on-surface) 8%, transparent)); }
 .milkdown-editor .milkdown .top-bar-item:has([data-mo-color-trigger]) [data-mo-color-trigger] { display: inline-flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
-.milkdown-editor .milkdown .top-bar-item:has([data-mo-color-trigger]) [data-mo-color-trigger] svg { width: 20px; height: 20px; }
+.milkdown-editor .milkdown .top-bar-item:has([data-mo-color-trigger]) [data-mo-color-trigger] svg { width: 18px; height: 18px; }
 .milkdown-editor .milkdown .top-bar-item:has([data-mo-color-trigger='color']) [data-mo-color-trigger] svg { color: var(--crepe-color-on-surface); }
 .milkdown-editor .milkdown .top-bar-item:has([data-mo-color-trigger='background']) [data-mo-color-trigger] svg { color: var(--crepe-color-on-surface); }
 .milkdown-editor .milkdown .top-bar-divider { margin: 5px; height: 18px; }
@@ -145,13 +145,100 @@
 .milkdown-editor .milkdown .top-bar-heading-selector:has([data-mo-toolbar-mark='background']) .top-bar-heading-label::before { content: 'A'; padding: 1px 3px; border-radius: 2px; background: var(--crepe-color-on-surface); color: var(--crepe-color-surface); font-size: 16px; font-weight: 700; }
 .milkdown-editor .milkdown .top-bar-size-input { width: 44px; height: 22px; margin: 0 2px; padding: 0 2px; border: 1px solid var(--crepe-color-outline); border-radius: 4px; background: var(--crepe-color-background); color: var(--crepe-color-on-surface); font-size: 12px; line-height: 20px; text-align: center; box-sizing: border-box; outline: none; }
 .milkdown-editor .milkdown .top-bar-size-input:focus { border-color: var(--crepe-color-primary); }
-.milkdown-editor .milkdown-media-node { min-width: 0; max-width: 100%; border-radius: 12px; }
-.milkdown-editor .milkdown-media-node.ProseMirror-selectednode { outline: 2px solid var(--primary, #475569); outline-offset: 2px; }
+/* position: relative 是给对齐选择那排当定位参照（它要浮在卡片上方、卡片之外，见下）。
+   不会抢走卡片内那些绝对定位浮层的参照：它们各自的父元素（figure / .milkdown-media-photo-upload）
+   本来就已经是 position: relative。 */
+.milkdown-editor .milkdown-media-node { position: relative; min-width: 0; max-width: 100%; border-radius: 12px; }
+/* 有真实图片的图片族卡片（图片卡 / 待上传预览卡）：NodeView 外层也跟着卡片收窄到图片宽度。
+   卡片本体那层收窄见 content.css（figure:has(img) 那两条）；外层不跟着收，整栏就仍算一个
+   「看不见的媒体块」——按元素框量出来是满栏宽（点选、悬浮层、任何按框对齐的东西都对不上图片），
+   而里面实际可见的内容只有图片那么宽。图片本身才是内容，块也要贴着它。
+   拼图、播放器、链接/文件卡，以及拿不到图的占位卡保持满栏：它们要么本来就是满栏排版（拼图按网格
+   分格），要么没有可贴的图片（收窄会变成一条「图片暂不可用」的窄条）。
+   内联 width（媒体设置里给定的像素宽度）仍优先：外层 fit-content 会让位给卡片的显式宽度。
+   ⚠️ 不能写成嵌套 :has()（外层 :has(> figure…:has(img))）——规范禁止 :has() 里再嵌 :has()，
+   整条规则会被静默丢弃；这里改为问「外层直接包含的 image / upload 卡里有没有 img」，与 content.css
+   的门禁同义（拼图卡是 .milkdown-media-gallery，不会被这两条命中）。 */
+.milkdown-editor .milkdown .milkdown-media-node:has(> figure.milkdown-media-image img),
+.milkdown-editor .milkdown .milkdown-media-node:has(> figure.milkdown-media-upload img) { width: fit-content; }
+/* 单图卡的对齐，在编辑器里必须落在上面这层 **NodeView 外层**上，而不是卡片本体（figure）。
+   外层对有图的图片卡刚好收成「图片那么宽」，卡片本体在这样一个装得刚刚好的父元素里
+   `margin-inline: auto` 没有可分配的空隙 —— auto 外边距等于没写，这就是「选了对齐但没反应」。
+   只读预览侧没有这一层：figure 直接躺在满栏的 .milkdown-content / .milkdown-block-style 里，
+   所以那边继续用 content.css 的那几条 figure 规则。
+   由弱到强三层，与 content.css 同一口径：默认居中 ⇒ 外层 block-style 说了算 ⇒ 卡片自己写了以卡为准。
+   默认那条是「谁都能命中」的弱规则：正文容器（.ProseMirror）与 block-style 都是普通块级盒子，
+   满栏宽的卡片（拼图 / 播放器 / 链接文件卡）在 auto 外边距下算出来就是 0，没有可见影响。 */
+.milkdown-editor .milkdown .milkdown-media-node { margin-inline: auto; }
+.milkdown-editor .milkdown .milkdown-block-style[data-milkdown-align="left"] .milkdown-media-node { margin-left: 0; margin-right: auto; }
+.milkdown-editor .milkdown .milkdown-block-style[data-milkdown-align="center"] .milkdown-media-node { margin-inline: auto; }
+.milkdown-editor .milkdown .milkdown-block-style[data-milkdown-align="right"] .milkdown-media-node { margin-left: auto; margin-right: 0; }
+/* `:has()` 的特异性按括号里最具体的那个选择器算，所以这三条比上面 block-style 那三条高一格
+   （0,5,1 对 0,5,0）：卡片自己写下的对齐压过外层容器 —— 与 content.css 的注释同一口径。 */
+.milkdown-editor .milkdown .milkdown-media-node:has(> figure.milkdown-media-image[data-media-align="left"]) { margin-left: 0; margin-right: auto; }
+.milkdown-editor .milkdown .milkdown-media-node:has(> figure.milkdown-media-image[data-media-align="center"]) { margin-inline: auto; }
+.milkdown-editor .milkdown .milkdown-media-node:has(> figure.milkdown-media-image[data-media-align="right"]) { margin-left: auto; margin-right: 0; }
+/* 对齐主按钮：跟编辑 / 移除同一簇、同一套显隐（都在 .milkdown-media-overlay 里，
+   由 content.css 那几条「悬浮 / 选中 / 焦点在内」的规则统一控制），所以这里只给尺寸与配色。
+   图标本身就是当前对齐。 */
+.milkdown-editor .milkdown-media-align { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; color: var(--muted-foreground, #777); background: transparent; cursor: pointer; }
+.milkdown-editor .milkdown-media-align:hover { background: var(--muted, #f3f4f6); color: var(--foreground, #262626); }
+.milkdown-editor .milkdown-media-align:focus-visible { outline: 2px solid var(--primary, #2563eb); outline-offset: -2px; }
+/* 点开主按钮后摊出来的三个选择：**浮在卡片上方、卡片之外**（bottom: 100% 顶到卡片顶边再退开 6px），
+   本身不占布局高度。它是 <figure> 的兄弟节点，靠 NodeView 外层的 position: relative 定位 ——
+   卡片本体是 overflow: hidden，摊开的一排放在卡片里会被自己裁掉一截，窄图上尤其明显。
+   显隐只由展开态决定（不跟着 hover 走）：它是一次「选一个」的停留，鼠标从卡片挪上来时不该消失；
+   收回交给 MediaCard —— 选中一项、再点一次主按钮、或焦点离开这一簇。 */
+.milkdown-editor .milkdown-media-align-panel { position: absolute; right: 0; bottom: 100%; z-index: 3; margin-bottom: 6px; display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--border, #ddd); border-radius: 8px; background: var(--card, #fff); box-shadow: 0 2px 12px #0001; }
+/* 与主按钮同尺寸同悬浮色；当前生效的那一项用主色标出来 */
+.milkdown-editor .milkdown-media-align-panel button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; color: var(--muted-foreground, #777); background: transparent; cursor: pointer; }
+.milkdown-editor .milkdown-media-align-panel button:hover { background: var(--muted, #f3f4f6); color: var(--foreground, #262626); }
+.milkdown-editor .milkdown-media-align-panel button[aria-pressed="true"] { background: var(--muted, #f3f4f6); color: var(--primary, #2563eb); }
+.milkdown-editor .milkdown-media-align-panel button:focus-visible { outline: 2px solid var(--primary, #2563eb); outline-offset: -2px; }
+/* 选中描边画在卡片本体上（figure），不画在 NodeView 外层：外层对有图的图片卡已收窄（见上一条），
+   但拼图 / 播放器 / 链接卡仍是满栏 —— 描边始终画在「这张卡」自己的框上，才对得上它的范围。 */
+.milkdown-editor .milkdown-media-node.ProseMirror-selectednode .milkdown-media { outline: 2px solid var(--primary, #475569); outline-offset: 2px; }
+/* Crepe 主题会给选中的节点层整栏铺一层选中底色（`.milkdown .ProseMirror .ProseMirror-selectednode`），
+   媒体节点这层同样被铺满 —— 窄图被选中时右侧就露出一块补充背景。这一层保持透明，选中反馈
+   只留上面那圈画在卡片本体上的描边；选择器比主题多一层（.ProseMirror）以稳定压过主题底色。 */
+.milkdown-editor .ProseMirror .milkdown-media-node.ProseMirror-selectednode { background: transparent; }
 .milkdown-editor .milkdown-media { margin: 16px 0; }
+/* 媒体可以拖着走：拼图里的一格单独拖出去（拖到别的卡上并进去 / 同一张拼图里调序 / 拖到正文里还原成
+   独立图片卡），整张图片族卡拖到另一张图上并成拼图。拖动时把源格压暗，指针底下那张「松手会并进」的卡
+   描一圈虚线预告。draggable 属性跟的是 MediaCard 上的 draggableTiles —— 只有编辑器传它，
+   预览 / 发布侧一格都不能拖；虚线框两种拖法共用（落点判定见 media-merge.ts 的 mergeTargetDom）。 */
+.milkdown-editor .milkdown-media-grid > .milkdown-media-photo[draggable="true"] { cursor: grab; }
+.milkdown-editor .milkdown-media-photo.is-dragging { opacity: .4; cursor: grabbing; }
+.milkdown-editor .milkdown-media-node.is-drop-target .milkdown-media { outline: 2px dashed var(--primary, #475569); outline-offset: 2px; }
+/* 拖媒体时藏掉编辑器自己的落点指示线（Crepe 的 drop-indicator 画的 `.milkdown-drop-indicator`）：
+   那条线说的是「把拖拽内容插到这里」，而松手的真实语义要么是并进某张卡（由卡片上的虚线框预告）、
+   要么是落进正文插成新的独立块 —— 两条提示同时出现会互相矛盾。
+   拖格：整段拖拽都藏（dragstart 挂上）；拖整卡：只在指针真在可并的卡上时藏（由 media-merge.ts 的
+   dragover 按落点切换）。指示线由插件写成内联 display，所以这里用 visibility 压（不写 !important）。 */
+.milkdown-editor.is-media-dragging .milkdown-drop-indicator { visibility: hidden; }
 .milkdown-editor-status { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 12px; font-size: 11px; line-height: 1.4; color: var(--muted-foreground, #777); border-top: 1px solid var(--border, #e5e7eb); }
 .milkdown-editor-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--destructive, #b91c1c); background: color-mix(in srgb, var(--destructive, #b91c1c) 7%, transparent); padding: 10px 14px; font-size: 13px; }
 .milkdown-editor-error button { cursor: pointer; border: 0; padding: 2px 5px; background: transparent; color: inherit; }
-.milkdown-media-dialog { width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow-y: auto; margin: auto; border: 1px solid var(--border, #ddd); border-radius: 16px; padding: 24px; color: var(--foreground, #262626); background: var(--card, #fff); box-shadow: 0 24px 80px #0003; }
+.milkdown-media-dialog { width: min(960px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow: hidden; box-sizing: border-box; margin: auto; border: 1px solid var(--border, #ddd); border-radius: 16px; padding: 0; color: var(--foreground, #262626); background: var(--card, #fff); box-shadow: 0 24px 80px #0003; }
+.milkdown-media-dialog > form { display: flex; flex-direction: column; max-height: calc(100dvh - 50px); min-height: 0; }
+.milkdown-media-dialog header { flex: 0 0 auto; padding: 18px 24px; border-bottom: 1px solid var(--border, #ddd); }
+/* 左参数 / 右预览。两栏各滚各的，header 与 footer 钉在两头（见 .milkdown-media-dialog > form）。
+   参数栏先占 48%、预览栏 52%：预览要放得下一张卡，参数这边最长的一条是 range 滑杆。 */
+.milkdown-media-dialog-main { display: flex; flex: 1 1 auto; min-height: 0; }
+.milkdown-media-dialog-controls { flex: 1 1 48%; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 24px 24px; }
+.milkdown-media-dialog-preview { display: flex; flex: 1 1 52%; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 18px 24px 24px; border-left: 1px solid var(--border, #ddd); background: var(--muted, #fafafa); }
+.milkdown-media-dialog-preview-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; font-size: 13px; }
+.milkdown-media-dialog-preview-heading strong, .milkdown-media-dialog-preview-heading small { display: block; }
+.milkdown-media-dialog-preview-heading small { margin-top: 3px; color: var(--muted-foreground, #777); font-size: 11px; }
+.milkdown-media-dialog-preview-heading > span { color: var(--muted-foreground, #777); font-size: 11px; white-space: nowrap; }
+.milkdown-media-dialog-preview-stage { display: grid; min-height: 180px; place-items: center; }
+/* 卡片本体自带上下 20px 外边距（正文里要的段落间距）：预览的间距由面板给，卡片上清零，
+   否则同一列里图片卡与拼图卡的顶边会差出一截。 */
+.milkdown-media-dialog-preview-stage > .milkdown-media { margin: 0; }
+.milkdown-media-dialog-preview-stage .milkdown-gallery-editor-grid { margin-top: 0; }
+.milkdown-media-dialog-preview-stage > .milkdown-gallery-editor-empty { width: 100%; box-sizing: border-box; }
+.milkdown-media-dialog-preview-empty { width: 100%; box-sizing: border-box; padding: 24px; border: 1px dashed var(--border, #bbb); border-radius: 12px; color: var(--muted-foreground, #777); font-size: 12px; line-height: 1.6; text-align: center; }
+.milkdown-media-dialog-field { display: flex; flex-direction: column; gap: 7px; margin-top: 18px; font-size: 13px; }
 .milkdown-media-dialog::backdrop { background: #0006; backdrop-filter: blur(3px); }
 .milkdown-media-dialog header, .milkdown-media-dialog footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .milkdown-media-dialog h2 { margin: 0; font-size: 18px; font-weight: 600; }
@@ -184,9 +271,47 @@
 @media (max-width: 520px) { .milkdown-editor .mo-color-palette { width: min(360px, calc(100vw - 16px)); padding: 12px; } .milkdown-editor .mo-color-base-grid { gap: 5px; } .milkdown-editor .mo-color-more { height: 180px; } .milkdown-editor .mo-color-hue { height: 180px; } }
 .milkdown-media-dialog input, .milkdown-media-dialog textarea, .milkdown-media-dialog select { width: 100%; border: 1px solid var(--border, #ddd); border-radius: 7px; padding: 9px 11px; color: inherit; background: var(--background, #fff); font: inherit; box-sizing: border-box; }
 .milkdown-media-dialog input:focus, .milkdown-media-dialog textarea:focus, .milkdown-media-dialog select:focus { outline: 2px solid var(--primary, #475569); outline-offset: 1px; }
-.milkdown-media-dialog button { display: inline-flex; align-items: center; justify-content: center; border-radius: 7px; padding: 8px 12px; background: var(--muted, #f3f4f6); border: 0; cursor: pointer; font-size: 13px; }
-.milkdown-media-dialog footer { justify-content: flex-end; margin-top: 24px; }
+.milkdown-media-dialog button:not(:where(.milkdown-media-dialog-select *)) { display: inline-flex; align-items: center; justify-content: center; border-radius: 7px; padding: 8px 12px; background: var(--muted, #f3f4f6); border: 0; cursor: pointer; font-size: 13px; }
+.milkdown-media-dialog footer { flex: 0 0 auto; justify-content: flex-end; margin: 0; padding: 14px 24px; border-top: 1px solid var(--border, #ddd); background: var(--card, #fff); }
 .milkdown-media-dialog .milkdown-dialog-submit { background: var(--primary, #475569); color: var(--primary-foreground, #fff); }
 .milkdown-dialog-hint { font-size: 12px; line-height: 1.5; color: var(--muted-foreground, #777); margin: 8px 0 0; }
 .milkdown-media-detected { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; color: var(--foreground, #262626); font-size: 12px; }
 .milkdown-media-dialog textarea { resize: vertical; }
+/* 「拼图样式」不用下拉框：每个样式是一张线框缩略图 + 一行小字。缩略图的格子摆法来自
+   galleryGridShape，与正文卡片、右侧预览同一个几何来源，不会画错。
+   选择器要压过上面的 `.milkdown-media-dialog button:not(...)`（(0,1,1)），所以带一层祖先类。 */
+.milkdown-gallery-layout-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(62px, 1fr)); gap: 6px; }
+.milkdown-media-dialog .milkdown-gallery-layout-option { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 7px 8px 6px; border: 1px solid var(--border, #ddd); border-radius: 9px; background: var(--card, #fff); color: var(--muted-foreground, #777); font-size: 11px; }
+.milkdown-media-dialog .milkdown-gallery-layout-option:hover { border-color: var(--primary, #475569); }
+.milkdown-media-dialog .milkdown-gallery-layout-option:focus-visible { outline: 2px solid var(--primary, #475569); outline-offset: 1px; }
+.milkdown-media-dialog .milkdown-gallery-layout-option.is-active { border-color: var(--primary, #475569); box-shadow: inset 0 0 0 1px var(--primary, #475569); color: var(--foreground, #262626); }
+.milkdown-gallery-layout-frame { display: grid; gap: 2px; }
+.milkdown-gallery-layout-frame i { display: block; border: 1px solid currentColor; border-radius: 2px; opacity: .45; }
+.milkdown-media-dialog .milkdown-gallery-layout-option:hover .milkdown-gallery-layout-frame i { opacity: .7; }
+.milkdown-media-dialog .milkdown-gallery-layout-option.is-active .milkdown-gallery-layout-frame i { opacity: .9; }
+.milkdown-gallery-layout-option small { font-size: 10px; line-height: 1.2; color: inherit; }
+.milkdown-gallery-editor-grid { display: grid; gap: 4px; margin-top: 12px; }
+.milkdown-gallery-editor-tile { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: transparent; cursor: grab; }
+.milkdown-gallery-editor-tile.is-dragging { opacity: .45; }
+.milkdown-gallery-editor-tile.is-selected, .milkdown-gallery-editor-tile:focus-visible { outline: 2px solid var(--primary, #475569); outline-offset: -2px; }
+.milkdown-gallery-editor-tile img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.milkdown-gallery-editor-placeholder { display: grid; width: 100%; height: 100%; place-items: center; color: var(--muted-foreground, #777); font-size: 11px; }
+.milkdown-gallery-editor-empty { display: grid; min-height: 112px; place-items: center; border: 1px dashed var(--border, #bbb); border-radius: 7px; color: var(--muted-foreground, #777); font-size: 12px; }
+.milkdown-gallery-editor-add { display: flex; gap: 8px; }
+.milkdown-gallery-editor-add input { flex: 1; min-width: 0; }
+.milkdown-gallery-editor-add button { flex: 0 0 auto; gap: 5px; white-space: nowrap; }
+/* 裁切面板现在排在参数栏里、跟在「拼图样式」后面，与别的字段同一个 18px 间距 */
+.milkdown-gallery-editor-crop { display: grid; gap: 8px; margin-top: 18px; padding: 11px 12px; border: 1px solid var(--border, #ddd); border-radius: 9px; background: var(--muted, #fafafa); }
+.milkdown-gallery-editor-crop strong { font-size: 12px; }
+.milkdown-gallery-editor-crop label { display: grid; grid-template-columns: 86px 1fr; align-items: center; gap: 10px; margin: 0; font-size: 11px; }
+.milkdown-gallery-editor-crop input[type="range"] { width: 100%; padding: 0; border: 0; }
+.milkdown-gallery-editor-crop button { justify-self: start; padding: 5px 8px; font-size: 11px; }
+/* 窄窗口 / 手机：并排两栏塞不下（弹性基准 48/52，各只剩三百来像素，图看不清）。
+   退回上下排列，预览提到参数上方——先看到效果，再往下调参数；这一层没有多余的滚动条，
+   由 .milkdown-media-dialog-main 统一滚，header 与 footer 依旧钉住。 */
+@media (max-width: 780px) {
+  .milkdown-media-dialog { width: min(560px, calc(100vw - 24px)); }
+  .milkdown-media-dialog-main { flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
+  .milkdown-media-dialog-controls, .milkdown-media-dialog-preview { flex: 0 0 auto; min-height: 0; overflow: visible; }
+  .milkdown-media-dialog-preview { order: -1; padding: 18px 24px; border-left: 0; border-bottom: 1px solid var(--border, #ddd); }
+}

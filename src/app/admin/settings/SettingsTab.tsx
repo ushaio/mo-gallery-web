@@ -45,6 +45,7 @@ import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput, AdminSelect } from '@/components/admin/AdminFormControls'
 import { FormSkeleton, ListSkeleton } from '@/components/admin/Skeleton'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
+import { WeChatBindingCard } from './WeChatBindingCard'
 
 interface SettingsTabProps {
   token: string | null
@@ -1026,6 +1027,14 @@ export function SettingsTab({
                     </div>
                   )}
                 </div>
+
+                {/* 微信公众号绑定（服务端持有凭据，桌面端只做展示） */}
+                <WeChatBindingCard
+                  token={token}
+                  t={t}
+                  notify={notify}
+                  onUnauthorized={onUnauthorized}
+                />
               </div>
             )}
 

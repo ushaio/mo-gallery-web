@@ -14,7 +14,7 @@ export default function UploadPage() {
   } = useAdmin()
 
   return (
-    <div className="space-y-8">
+    <div className="flex h-full flex-col">
       <UploadTab
         token={token}
         tags={tags}

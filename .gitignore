@@ -83,6 +83,7 @@ public/uploads
 
 # local temp artifacts
 /tmp/
+/Temp/
 temp_screenshot.png
 /.eslint-current.json
 

@@ -278,17 +278,10 @@ export default function FriendsPage() {
 
   return (
     <div className="h-full flex flex-col gap-6 overflow-hidden">
-      {/* 页面头部 */}
-      <div className="flex items-center justify-between border-b border-border pb-4 flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <Users className="w-6 h-6 text-primary" />
-          <h3 className="font-serif text-2xl uppercase tracking-tight">
-            {t('admin.friends')}
-          </h3>
-          <span className="text-xs text-muted-foreground">
-            {friends.length} {t('admin.items')}
-          </span>
-        </div>
+      {/* 页面头部：页面标题（「友链管理」）已由顶栏渲染，这里不再重复标题块（图标 /
+          标题 / 条目数一并去掉）；与下方列表之间也不画满宽分隔线（与子标签栏、列表
+          工具栏同一口径，页面更一体化）。操作按钮仍靠右。 */}
+      <div className="flex items-center justify-end flex-shrink-0">
         <AdminButton
           onClick={handleCreate}
           adminVariant="primary"

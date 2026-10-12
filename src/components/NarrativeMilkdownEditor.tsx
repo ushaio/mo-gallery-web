@@ -3,6 +3,8 @@
 import { forwardRef, useCallback, useMemo } from 'react'
 import { MilkdownEditor } from '@mo-gallery/milkdown'
 import type { MilkdownEditorHandle, MilkdownEditorProps } from '@mo-gallery/milkdown'
+import type { MediaDialogSelectProps } from '@mo-gallery/milkdown'
+import { CustomSelect } from '@/components/ui/CustomSelect'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { uploadPhoto } from '@/lib/api/photos'
@@ -10,6 +12,10 @@ import type { PhotoDto } from '@/lib/api/types'
 import { createMilkdownAiProvider } from '@/lib/milkdown-ai'
 
 export type NarrativeMilkdownEditorHandle = MilkdownEditorHandle
+
+function renderMediaDialogSelect(props: MediaDialogSelectProps) {
+  return <CustomSelect {...props} uiVariant="admin" />
+}
 
 interface NarrativeMilkdownEditorProps extends MilkdownEditorProps {
   token?: string | null
@@ -36,7 +42,7 @@ const NarrativeMilkdownEditor = forwardRef<MilkdownEditorHandle, NarrativeMilkdo
     return photo.url
   }, [locale, onPhotoUploaded, token])
 
-  return <MilkdownEditor aiProvider={aiProvider} {...props} ref={ref} language={locale} resolveMediaUrl={resolveMediaUrl} onUpload={onUpload} />
+  return <MilkdownEditor aiProvider={aiProvider} {...props} renderMediaDialogSelect={renderMediaDialogSelect} ref={ref} language={locale} resolveMediaUrl={resolveMediaUrl} onUpload={onUpload} />
 })
 
 export default NarrativeMilkdownEditor

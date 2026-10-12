@@ -19,6 +19,7 @@ import {
 } from '@mo-gallery/image-pipeline'
 import { normalizeMake, extractLensMakeFromModel, makeBrandKey } from '~/server/lib/equipment'
 import { resolvePhotoUploadAssets } from '~/server/lib/photo-upload-assets'
+import { loadSafeRemoteImage } from '~/server/lib/safe-remote-image'
 import { invalidatePhotoUrlCache, resolvePhotoUrls } from '~/server/lib/photo-urls'
 import { StorageProviderFactory, StorageError, getStorageConfig, getStorageConfigBySourceId } from '~/server/lib/storage'
 import sharp from 'sharp'
@@ -203,9 +204,8 @@ async function createDisplayImage(
   let sourceBuffer: Buffer
   if (isDesktopPluginPhoto(photo)) {
     if (!photo.url) throw new Error(`Missing public URL for desktop plugin photo ${photo.id}`)
-    const response = await fetch(photo.url)
-    if (!response.ok) throw new Error(`Unable to fetch desktop plugin object (${response.status})`)
-    sourceBuffer = Buffer.from(await response.arrayBuffer())
+    const downloaded = await loadSafeRemoteImage(photo.url, { maxBytes: 50 * 1024 * 1024, signal: AbortSignal.timeout(30_000) })
+    sourceBuffer = downloaded.buffer
   } else {
     const storageConfig = await resolveStorageConfig(photo)
     const storage = StorageProviderFactory.create(storageConfig)
@@ -323,6 +323,9 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
     const pageSizeStr = c.req.query('pageSize')
     const sortBy = c.req.query('sortBy') || 'createdAt'
     const sortOrder = c.req.query('sortOrder') || 'desc'
+    // 桌面端素材库（编辑器图库 / 按 id 找图）要的是整库，不带 `all` 就只能拿到
+    // 首页 50 张，于是库里其余照片在客户端一律解析不到。与 /photos 的 all 同口径。
+    const returnAll = c.req.query('all') === 'true'
 
     const page = pageStr ? parseInt(pageStr) : 1
     const pageSize = pageSizeStr ? parseInt(pageSizeStr) : 50
@@ -375,7 +378,7 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
       : [{ createdAt: sortDirection }]
 
     const [total, photosList] = await Promise.all([
-      db.photo.count({ where }),
+      returnAll ? Promise.resolve(0) : db.photo.count({ where }),
       db.photo.findMany({
         where,
         omit: { exifRaw: true },
@@ -385,23 +388,24 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
           lens: true,
           filmPhoto: { include: { filmRoll: { select: { name: true } } } },
         },
-        skip,
-        take: pageSize,
+        ...(returnAll ? {} : { skip, take: pageSize }),
         orderBy,
       })
     ])
 
     const data = await Promise.all(photosList.map((p) => mapPhotoDto(p)))
 
+    const resolvedTotal = returnAll ? photosList.length : total
+
     return c.json({
       success: true,
       data,
       meta: {
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
-        hasMore: page * pageSize < total,
+        total: resolvedTotal,
+        page: returnAll ? 1 : page,
+        pageSize: returnAll ? photosList.length : pageSize,
+        totalPages: returnAll ? 1 : Math.ceil(total / pageSize),
+        hasMore: returnAll ? false : page * pageSize < total,
       }
     })
   } catch (error) {

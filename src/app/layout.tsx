@@ -8,6 +8,8 @@ import { ThemeProvider } from "@/contexts/ThemeContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import Footer from "@/components/Footer";
+import DevAgentation from "@/components/DevAgentation";
+import ThemeInitScript from "@/components/ThemeInitScript";
 
 const cormorant = Cormorant_Garamond({
   variable: "--font-serif",
@@ -108,23 +110,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                try {
-                  var theme = localStorage.getItem('theme') || 'dark';
-                  var supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
-                  if (theme === 'dark' || (theme === 'system' && supportDarkMode)) {
-                    document.documentElement.classList.add('dark');
-                  } else {
-                    document.documentElement.classList.remove('dark');
-                  }
-                } catch (e) {}
-              })();
-            `,
-          }}
-        />
+        <ThemeInitScript />
       </head>
       <body
         className={`${cormorant.variable} ${montserrat.variable} antialiased bg-background text-foreground font-sans selection:bg-primary selection:text-primary-foreground`}
@@ -142,6 +128,7 @@ export default function RootLayout({
             </LanguageProvider>
           </SettingsProvider>
         </ThemeProvider>
+        <DevAgentation />
       </body>
     </html>
   );

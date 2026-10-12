@@ -857,33 +857,32 @@ export function UploadTab({
         }}
       />
 
-      {/* Upload Type Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-border">
-        <button
+      {/* Upload Type Tabs：与 `/admin/logs`（叙事 / 博客创作页）的子标签栏同款——
+          共享 `AdminButton adminVariant="tab"`（px-6 py-4 + text-xs font-bold
+          uppercase tracking-[0.2em]，选中态走 data-state），贴顶栏；与下方内容区之间
+          不再画满宽分隔线（整条线去掉，页面更一体化，官网 `/console/upload` 同步）。 */}
+      <div className="flex shrink-0 space-x-1 px-8">
+        <AdminButton
           onClick={() => handleUploadTypeChange('digital')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
-            uploadType === 'digital'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
+          adminVariant="tab"
+          data-state={uploadType === 'digital' ? 'active' : 'inactive'}
+          className="flex items-center gap-2 px-6 py-4 text-xs font-bold uppercase tracking-[0.2em]"
         >
           <Camera className="w-4 h-4" />
           {t('admin.upload_type_digital')}
-        </button>
-        <button
+        </AdminButton>
+        <AdminButton
           onClick={() => handleUploadTypeChange('film')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
-            uploadType === 'film'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
+          adminVariant="tab"
+          data-state={uploadType === 'film' ? 'active' : 'inactive'}
+          className="flex items-center gap-2 px-6 py-4 text-xs font-bold uppercase tracking-[0.2em]"
         >
           <Film className="w-4 h-4" />
           {t('admin.upload_type_film')}
-        </button>
+        </AdminButton>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto gap-8 px-8 pb-8 pt-6 lg:grid-cols-12 lg:gap-12">
         {/* Left Panel - Settings */}
         <div className="lg:col-span-4">
           <PhotoUploadParams

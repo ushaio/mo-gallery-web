@@ -1,6 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MilkdownContent } from '@mo-gallery/milkdown/content'
+import { decorateMilkdownMediaForWechat } from '@mo-gallery/milkdown/media'
 import {
   copyWechatArticleToClipboard,
   formatWechatArticleHtml,
@@ -36,6 +37,9 @@ function getFormatOptions(story: WechatArticleSource, cdnDomain?: string) {
     resolveImageUrl: (rawUrl: string, photoId?: string | null) => (
       resolveStoryCopyAssetUrl(rawUrl, photos, cdnDomain, photoId)
     ),
+    // 公众号会丢掉 class 与外部 CSS：媒体卡里靠类名排版的（拼图网格、图注）折算成内联样式，
+    // 否则并排的几格在粘贴后会各自变成一行。对非 Milkdown 正文是无操作。
+    decorate: decorateMilkdownMediaForWechat,
   }
 }
 

@@ -24,6 +24,9 @@ import { ApiUnauthorizedError, reanalyzePhotoColors, resolveAssetUrl, updatePhot
 import type { PhotoDto } from '@/lib/api/types'
 import { AdminButton } from '@/components/admin/AdminButton'
 
+/** 「重新分析主色」入口暂时隐藏（服务端能力保留）；改回 true 即恢复按钮。 */
+const SHOW_REANALYZE_COLORS = false
+
 interface LibraryPhotoInfoSidebarProps {
   photo: PhotoDto | null
   token: string | null
@@ -172,7 +175,7 @@ export function LibraryPhotoInfoSidebar({
           <button
             type="button"
             onClick={() => onOpenPreview?.(photo)}
-            className="relative block aspect-[4/3] w-full overflow-hidden rounded-md bg-muted"
+            className="relative block aspect-[4/3] w-full overflow-hidden"
             title={t('admin.photo_preview')}
           >
             <img
@@ -181,18 +184,76 @@ export function LibraryPhotoInfoSidebar({
               className="h-full w-full object-contain"
             />
           </button>
+
+          {/* 色卡：紧贴预览图下方；等分矩形色块铺满整行（无圆角、不设独立底色，与信息栏背景一体） */}
+          <div
+            role="group"
+            aria-label={t('admin.resource_library_palette')}
+            className="mt-2"
+          >
+            {photo.dominantColors && photo.dominantColors.length > 0 ? (
+              <div className="flex h-8">
+                {photo.dominantColors.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => void handleCopy(color, `palette:${color}`)}
+                    aria-label={`${t('admin.resource_library_copy_value')} ${color}`}
+                    className="group/palette relative min-w-0 flex-1"
+                    style={{ backgroundColor: color }}
+                  >
+                    {/* 悬浮显示色值，点击复制后短暂显示「已复制」 */}
+                    <span className="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] text-foreground opacity-0 shadow-sm transition-opacity group-hover/palette:opacity-100">
+                      {copiedKey === `palette:${color}` ? t('admin.ai_copied') : color}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[10px] text-muted-foreground">{t('admin.resource_library_no_palette')}</p>
+            )}
+            {SHOW_REANALYZE_COLORS && (
+              <button
+                type="button"
+                disabled={reanalyzing || !token}
+                onClick={() => void handleReanalyze()}
+                className="ml-auto flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-default disabled:opacity-50"
+                title={t('admin.resource_library_reanalyze_colors')}
+              >
+                <RefreshCw className={`h-3 w-3 ${reanalyzing ? 'animate-spin' : ''}`} />
+                {t('admin.resource_library_reanalyze')}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="space-y-5 p-4">
           <section>
-            <div className="flex items-start justify-between gap-2">
-              <h2 className="min-w-0 break-words text-sm font-semibold leading-5">
-                {photo.title || t('admin.resource_library_untitled_photo')}
-              </h2>
-              <div className="flex shrink-0 items-center gap-1.5">
+            {/* 标题独占一行：与右侧的「类型章 + 精选/可见按钮」拆开，长文件名（如
+                纯数字命名）不再被图标簇挤压换行。 */}
+            <h2 className="break-words text-sm font-semibold leading-5">
+              {photo.title || t('admin.resource_library_untitled_photo')}
+            </h2>
+
+            <div className="mt-2 flex items-start justify-between gap-2">
+              <div className="flex min-w-0 flex-wrap gap-1.5">
                 <span className="rounded border border-border bg-muted px-1.5 py-0.5 text-[10px]">
                   {photo.photoType === 'film' ? t('admin.upload_type_film') : t('admin.upload_type_digital')}
                 </span>
+                {photo.tags && (
+                  <span className="inline-flex max-w-full items-center gap-1 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px]">
+                    <Tag className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{photo.tags}</span>
+                  </span>
+                )}
+                {photo.filmRollName && (
+                  <span className="inline-flex max-w-full items-center gap-1 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px]">
+                    <Film className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{photo.filmRollName}</span>
+                  </span>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
                 <AdminButton
                   onClick={() => void onToggleFeatured(photo)}
                   adminVariant="icon"
@@ -213,21 +274,6 @@ export function LibraryPhotoInfoSidebar({
                   {isVisible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4 text-primary" />}
                 </AdminButton>
               </div>
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {photo.tags && (
-                <span className="inline-flex max-w-full items-center gap-1 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px]">
-                  <Tag className="h-3 w-3 shrink-0 text-muted-foreground" />
-                  <span className="truncate">{photo.tags}</span>
-                </span>
-              )}
-              {photo.filmRollName && (
-                <span className="inline-flex max-w-full items-center gap-1 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px]">
-                  <Film className="h-3 w-3 shrink-0 text-muted-foreground" />
-                  <span className="truncate">{photo.filmRollName}</span>
-                </span>
-              )}
             </div>
           </section>
 
@@ -279,33 +325,6 @@ export function LibraryPhotoInfoSidebar({
             </div>
           </section>
 
-          <section className="border-t border-border pt-4">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <SectionLabel label={t('admin.resource_library_palette')} className="mb-0" />
-              <button
-                type="button"
-                disabled={reanalyzing || !token}
-                onClick={() => void handleReanalyze()}
-                className="flex items-center gap-1 rounded px-1.5 py-1 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-default disabled:opacity-50"
-                title={t('admin.resource_library_reanalyze_colors')}
-              >
-                <RefreshCw className={`h-3 w-3 ${reanalyzing ? 'animate-spin' : ''}`} />
-                {t('admin.resource_library_reanalyze')}
-              </button>
-            </div>
-            {photo.dominantColors && photo.dominantColors.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {photo.dominantColors.map((color) => (
-                  <span key={color} className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                    <span className="size-4 rounded border border-border" style={{ backgroundColor: color }} />
-                    {color}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <p className="text-[10px] text-muted-foreground">{t('admin.resource_library_no_palette')}</p>
-            )}
-          </section>
         </div>
       </div>
 

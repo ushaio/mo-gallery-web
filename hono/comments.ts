@@ -4,6 +4,7 @@ import { db } from '~/server/lib/db'
 import { authMiddleware, AuthVariables } from './middleware/auth'
 import { verifyToken } from '~/server/lib/jwt'
 import { z } from 'zod'
+import { clientIpFromHeaders } from '~/server/lib/client-ip'
 
 const comments = new Hono<{ Variables: AuthVariables }>()
 
@@ -80,7 +81,7 @@ comments.post('/photos/:photoId/comments', async (c) => {
     }
   }
 
-  const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown'
+  const ip = clientIpFromHeaders((name) => c.req.header(name))
 
   const photo = await db.photo.findUnique({ where: { id: photoId } })
   if (!photo) {
