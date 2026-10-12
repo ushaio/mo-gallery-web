@@ -19,6 +19,7 @@ interface CustomSelectProps {
   disabled?: boolean
   uiVariant?: UiVariant
   className?: string
+  ariaLabel?: string
 }
 
 export function CustomSelect({
@@ -29,6 +30,7 @@ export function CustomSelect({
   disabled = false,
   uiVariant = 'admin',
   className = '',
+  ariaLabel,
 }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -82,6 +84,15 @@ export function CustomSelect({
     <div ref={containerRef} className={`relative ${className}`}>
       <div
         className={`${ui.trigger} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        role="button"
+        tabIndex={disabled ? -1 : 0}
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (!disabled) setIsOpen(!isOpen) }
+          if (event.key === 'Escape' && isOpen) { event.preventDefault(); event.stopPropagation(); setIsOpen(false) }
+        }}
         onClick={() => !disabled && setIsOpen(!isOpen)}
       >
         <span className={ui.label}>{displayLabel}</span>
@@ -90,10 +101,13 @@ export function CustomSelect({
         />
       </div>
       {isOpen && (
-        <div className={ui.dropdown}>
+        <div className={ui.dropdown} role="listbox" aria-label={ariaLabel}>
           {options.map((option) => (
             <button
               key={option.value}
+              type="button"
+              role="option"
+              aria-selected={value === option.value}
               onClick={() => {
                 onChange(option.value)
                 setIsOpen(false)
