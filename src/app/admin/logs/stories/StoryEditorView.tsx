@@ -158,15 +158,17 @@ export function StoryEditorView({
     })
   }
 
+  // 垂直节奏（与左栏 StoryListView 同一条网格）：顶栏 `h-11`(44) = 左栏紧凑工具栏的 32px 控件 + `pb-3`(12)；
+  // 随后 `gap-2`(8) 让日期行与左栏「本月」组头、编辑器块与左栏首张卡各落在同一水平线上。
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
-      <fieldset disabled={isAiTaskLocked} className="flex shrink-0 items-center justify-between gap-4 border-0 border-b border-border px-3 py-1">
+    <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
+      <fieldset disabled={isAiTaskLocked} className="flex h-11 shrink-0 items-center justify-between gap-4 border-0 border-b border-border px-3 py-0">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <AdminButton
             onClick={onToggleListPane}
             adminVariant="outlineMuted"
             size="sm"
-            className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md p-0 md:flex"
+            className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-md p-0 md:flex"
             aria-label={listPaneCollapsed ? t('admin.expand_list') : t('admin.collapse_list')}
             title={listPaneCollapsed ? t('admin.expand_list') : t('admin.collapse_list')}
           >
@@ -176,7 +178,7 @@ export function StoryEditorView({
             onClick={onBack}
             adminVariant="outlineMuted"
             size="sm"
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md p-0"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md p-0"
             aria-label={t('admin.back_list')}
             title={t('admin.back_list')}
           >
@@ -188,7 +190,7 @@ export function StoryEditorView({
             value={currentStory.title || ''}
             onChange={(event) => setCurrentStory((prev) => (prev ? { ...prev, title: event.target.value } : prev))}
             placeholder={t('story.title_placeholder')}
-            className="min-w-0 flex-1 border-0 border-b border-border/40 bg-transparent px-0 py-0.5 font-serif text-lg font-light leading-none tracking-tight shadow-none transition-colors placeholder:font-serif placeholder:text-muted-foreground/35 hover:border-foreground/25 focus:border-primary focus-visible:ring-0 md:text-xl"
+            className="h-8 min-w-0 flex-1 border-0 border-b border-border/40 bg-transparent px-0 py-0 font-serif text-lg font-light leading-none tracking-tight shadow-none transition-colors placeholder:font-serif placeholder:text-muted-foreground/35 hover:border-foreground/25 focus:border-primary focus-visible:ring-0 md:text-xl"
           />
           {draftSaved ? (
             <span className="hidden shrink-0 items-center gap-1 rounded border border-green-500/25 bg-green-500/10 px-1.5 py-0.5 text-[10px] font-medium text-green-600 sm:flex dark:text-green-400">
@@ -219,15 +221,15 @@ export function StoryEditorView({
               {currentStory.isPublished ? t('admin.published') : t('admin.draft')}
             </span>
           </div>
-          <AdminButton onClick={showPreview} adminVariant="outline" className="flex h-7 shrink-0 items-center gap-2 rounded-md px-2.5 text-[10px] shadow-none">
+          <AdminButton onClick={showPreview} adminVariant="outline" className="flex h-8 shrink-0 items-center gap-2 rounded-md px-2.5 text-[10px] shadow-none">
             <Eye className="h-3.5 w-3.5" />
             <span className="hidden xl:inline">{t('admin.preview')}</span>
           </AdminButton>
-          <AdminButton onClick={() => setIsImmersiveMode((prev) => !prev)} adminVariant="outline" className="flex h-7 shrink-0 items-center gap-2 rounded-md px-2.5 text-[10px] shadow-none" aria-pressed={isImmersiveMode}>
+          <AdminButton onClick={() => setIsImmersiveMode((prev) => !prev)} adminVariant="outline" className="flex h-8 shrink-0 items-center gap-2 rounded-md px-2.5 text-[10px] shadow-none" aria-pressed={isImmersiveMode}>
             {isImmersiveMode ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
             <span className="hidden xl:inline">{t('ui.immersive')}</span>
           </AdminButton>
-          <AdminButton onClick={onSave} disabled={saving || isUploading || !isMilkdownReady} adminVariant="primary" size="md" className="flex h-7 shrink-0 items-center gap-2 rounded-md px-3 shadow-none">
+          <AdminButton onClick={onSave} disabled={saving || isUploading || !isMilkdownReady} adminVariant="primary" size="md" className="flex h-8 shrink-0 items-center gap-2 rounded-md px-3 shadow-none">
             <Save className="h-3.5 w-3.5" />
             <span>{saving ? t('ui.saving') : isUploading ? t('admin.uploading') : t('admin.save')}</span>
           </AdminButton>

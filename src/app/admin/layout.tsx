@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState, createContext, useContext, useCallback, useMemo } from 'react'
 import Link from 'next/link'
-import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronLeft, ChevronRight, ExternalLink, LogOut, Monitor, Moon, Sun } from 'lucide-react'
 import {
   ConsoleRuntimeProvider,
@@ -37,6 +36,7 @@ import { UrlUpdateConfirmDialog } from '@/components/admin/UrlUpdateConfirmDialo
 import { UploadQueueProvider, useUploadQueue } from '@/contexts/UploadQueueContext'
 import { UploadProgressPopup } from '@/components/admin/UploadProgressPopup'
 import { AdminButton } from '@/components/admin/AdminButton'
+import { AdminConfirmDialog } from '@/components/admin/AdminConfirmDialog'
 import { getActiveAdminSidebarItem, getAdminSidebarItems } from '@/components/admin/admin-sidebar-config'
 import { isAuthFailurePending, reportAuthFailure } from '@/lib/auth-failure'
 import { cn } from '@/lib/utils'
@@ -518,77 +518,26 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
         t={t}
       />
 
-      {/* Logout Confirmation Dialog */}
-      <AnimatePresence>
-        {showLogoutConfirm && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-sm"
-              onClick={() => setShowLogoutConfirm(false)}
-            />
-
-            {/* Dialog */}
-            <div className="fixed inset-0 z-[121] flex items-center justify-center p-4 pointer-events-none">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                transition={{ duration: 0.2, ease: 'easeOut' }}
-                className="bg-background border border-border p-8 max-w-md w-full shadow-2xl pointer-events-auto"
-              >
-                {/* Header with Icon */}
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="w-12 h-12 bg-destructive/10 flex items-center justify-center">
-                    <LogOut className="w-6 h-6 text-destructive" />
-                  </div>
-                  <div>
-                    <h3 className="font-serif text-xl font-light uppercase tracking-tight">
-                      {t('nav.logout')}
-                    </h3>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-0.5">
-                      {t('common.confirm')}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mb-6">
-                  <p className="text-sm text-foreground leading-relaxed">
-                    {t('admin.logout_confirm')}
-                  </p>
-                </div>
-
-                <div className="flex gap-3">
-                  <AdminButton
-                    onClick={() => setShowLogoutConfirm(false)}
-                    adminVariant="outline"
-                    size="xl"
-                    className="flex-1 px-6 py-3 text-xs font-bold uppercase tracking-widest"
-                  >
-                    {t('common.cancel')}
-                  </AdminButton>
-                  <AdminButton
-                    onClick={() => {
-                      setShowLogoutConfirm(false)
-                      logout()
-                    }}
-                    adminVariant="destructive"
-                    size="xl"
-                    className="flex-1 px-6 py-3 text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    <span>{t('nav.logout')}</span>
-                  </AdminButton>
-                </div>
-              </motion.div>
-            </div>
-          </>
-        )}
-      </AnimatePresence>
+      {/* Logout Confirmation Dialog —— 与 SimpleDeleteDialog / DeleteConfirmDialog /
+          UrlUpdateConfirmDialog 共用同一件（web 后台设计语言：直角面板 + 48px 色块图标 +
+          serif 大写标题 + 等宽 xl 按钮；孪生件在官网 console 的 `console/ui/ConsoleConfirmDialog.tsx`）。 */}
+      <AdminConfirmDialog
+        open={showLogoutConfirm}
+        tone="danger"
+        icon={<LogOut className="w-6 h-6" />}
+        confirmIcon={<LogOut className="w-4 h-4" />}
+        title={t('nav.logout')}
+        eyebrow={t('common.confirm')}
+        description={t('admin.logout_confirm')}
+        cancelLabel={t('common.cancel')}
+        confirmLabel={t('nav.logout')}
+        confirmVariant="danger"
+        onCancel={() => setShowLogoutConfirm(false)}
+        onConfirm={() => {
+          setShowLogoutConfirm(false)
+          logout()
+        }}
+      />
 
       <UploadProgressPopupWrapper t={t} token={token} />
     </>

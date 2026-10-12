@@ -45,10 +45,10 @@
 .milkdown-editor .milkdown .top-bar-item span { display: flex; }
 .milkdown-editor .milkdown .top-bar-item svg { width: 18px; height: 18px; }
 .milkdown-editor .milkdown .top-bar-item svg[stroke] { fill: none; }
-.milkdown-editor .milkdown .top-bar-item:has([data-mo-color-trigger]) { position: relative; width: 32px; height: 30px; margin: 0; border-radius: 5px; }
+.milkdown-editor .milkdown .top-bar-item:has([data-mo-color-trigger]) { position: relative; width: 28px; height: 28px; margin: 1px; border-radius: 5px; }
 .milkdown-editor .milkdown .top-bar-item:has([data-mo-color-trigger]):hover { background: var(--crepe-color-hover, color-mix(in srgb, var(--crepe-color-on-surface) 8%, transparent)); }
 .milkdown-editor .milkdown .top-bar-item:has([data-mo-color-trigger]) [data-mo-color-trigger] { display: inline-flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
-.milkdown-editor .milkdown .top-bar-item:has([data-mo-color-trigger]) [data-mo-color-trigger] svg { width: 20px; height: 20px; }
+.milkdown-editor .milkdown .top-bar-item:has([data-mo-color-trigger]) [data-mo-color-trigger] svg { width: 18px; height: 18px; }
 .milkdown-editor .milkdown .top-bar-item:has([data-mo-color-trigger='color']) [data-mo-color-trigger] svg { color: var(--crepe-color-on-surface); }
 .milkdown-editor .milkdown .top-bar-item:has([data-mo-color-trigger='background']) [data-mo-color-trigger] svg { color: var(--crepe-color-on-surface); }
 .milkdown-editor .milkdown .top-bar-divider { margin: 5px; height: 18px; }

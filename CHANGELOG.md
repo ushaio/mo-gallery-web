@@ -41,6 +41,10 @@
 
 ### fix
 
+31. 统一后台与官网控制台的**确认弹窗外观**：删除 / 阻断 / URL 变更等确认弹窗此前复用共享包 `@mo-gallery/admin-console` 的 `ConsoleConfirmDialog`，外观仍是后台管理区那一套（圆角面板、20px 内边距、无衬线 15.5px 小标题、右对齐小按钮），与页面里「退出登录」弹窗的站点设计语言（直角面板、48px 色块图标、serif 大写标题 + 小字帽、两个等宽大写 xl 按钮）明显不是一套。现新增站点语言的确认件 `src/components/admin/AdminConfirmDialog.tsx`（与官网 console 的同名件逐行同构），`SimpleDeleteDialog`（22 处调用点）、`DeleteConfirmDialog`（照片删除的加载 / 阻断 / 普通三态）、`UrlUpdateConfirmDialog` 全部改用它，后台外壳的**退出登录弹窗**也改为复用同一组件（不再手写一份）。行为口径不变：Esc 关闭、遮罩点击关闭、`confirmOnEnter` 回车确认、提交中屏蔽关闭并把确认按钮换成 spinner；props 与共享件同名同义，调用点只换 import。仅展示层，数据、交互与 `/api/*` 接口不变，对 Desktop / App 无影响
+
+30. 后台文章创作页（`/admin/logs` 的照片叙事编辑器）各元素高度与跨栏网格对齐：列表工具栏的状态筛选框此前 40px、同行的搜索框 / 刷新 / 新建只有 30px，一行里两种高度（整行 52px），现四个控件统一 32px 高（整行 44px），与右侧编辑器顶栏的 44px 齐平 —— 编辑器顶栏由 `py-1` 改为固定 `h-11`，标题输入框与收起 / 返回 / 实时预览 / 沉浸 / 保存按钮统一到 32px（此前同一行里按钮 28px、标题 29px、徽章 20px 三种高度，标题的下划线还比按钮底边低 1–2px）；两栏之间的垂直间距由 16px 收到 8px，日期行与左侧「本月」分组头、编辑器块与左栏第一张卡片各自落在同一条水平线上（此前两栏完全错开）。素材库的「全部 / 已使用 / 未使用」筛选标签空高由 23px 提到 28px 并与行内居中。同时同步共享包镜像 `@mo-gallery/milkdown`：编辑器工具栏的前景色 / 背景色按钮由 32×30 收成与其他图标按钮一致的 28×28（图标 20px → 18px），此前这两个色块按钮比同行 B / I / U 明显高出一圈、垂直位置也不齐（由 mo-gallery-shared `pnpm sync` 生成，Desktop 与官网 `/console` 的同一编辑器同步获得）。仅展示层，数据、交互与接口不变，对 App 无影响
+
 1. 安全修复：访客故事/博客旧 HTML 回退渲染增加严格 allowlist 净化，阻断持久化 XSS；登录限速、评论与媒体来源 IP 统一仅信任配置的反向代理 Header；远程图片读取统一阻断内网目标、DNS rebinding 和不受限重定向；升级 Next.js/Hono/Sharp 及 Prisma 相关传递依赖（仅 Web/API 行为增强，对 Desktop / App 接口契约无破坏性变更）
 2. 首页装饰图标由通用的星芒（Sparkles）换为影像主题图标——Hero 用光圈（Aperture）、「关于画廊」区块用相机（Camera），与画廊定位一致（仅前端展示层，对 Desktop / App 无影响）
 3. 页脚社交链接的图标槽位固定为 16px，`SOCIAL_LINKS` 里写错或写了 Iconify 不存在的图标名时不再让该行文字左移错位（原先抖音项因 `ri:douyin-fill` 不存在而渲染成 0 宽空白，文字比其他行左移 16px）；`.env.example` 的抖音示例改为有效的 `ri:tiktok-fill` 并补充图标名校验说明

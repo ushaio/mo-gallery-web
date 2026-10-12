@@ -10,6 +10,7 @@ export interface SelectOption {
 }
 
 type UiVariant = 'admin' | 'site'
+type UiSize = 'md' | 'sm'
 
 interface CustomSelectProps {
   value: string
@@ -18,6 +19,8 @@ interface CustomSelectProps {
   placeholder?: string
   disabled?: boolean
   uiVariant?: UiVariant
+  /** `sm` 为紧凑尺寸：触发器 32px 高，用于与 32px 搜索框/图标按钮同排的紧凑工具栏 */
+  uiSize?: UiSize
   className?: string
   ariaLabel?: string
 }
@@ -29,6 +32,7 @@ export function CustomSelect({
   placeholder = '请选择',
   disabled = false,
   uiVariant = 'admin',
+  uiSize = 'md',
   className = '',
   ariaLabel,
 }: CustomSelectProps) {
@@ -41,10 +45,12 @@ export function CustomSelect({
     : placeholder
 
   const ui = useMemo(() => {
+    const compact = uiSize === 'sm'
     if (uiVariant === 'site') {
       return {
-        trigger:
-          'min-h-10 px-3 py-2 bg-background border border-border rounded-md flex items-center justify-between cursor-pointer transition-colors hover:border-primary',
+        trigger: compact
+          ? 'h-8 px-3 py-0 bg-background border border-border rounded-md flex items-center justify-between cursor-pointer transition-colors hover:border-primary'
+          : 'min-h-10 px-3 py-2 bg-background border border-border rounded-md flex items-center justify-between cursor-pointer transition-colors hover:border-primary',
         label: 'text-sm',
         dropdown:
           'absolute z-40 w-full mt-1 bg-background border border-border rounded-md shadow-xl max-h-56 overflow-y-auto',
@@ -55,8 +61,9 @@ export function CustomSelect({
     }
 
     return {
-      trigger:
-        'min-h-10 px-3 py-2 bg-background border-b border-border flex items-center justify-between cursor-pointer transition-colors hover:border-primary',
+      trigger: compact
+        ? 'h-8 px-3 py-0 bg-background border-b border-border flex items-center justify-between cursor-pointer transition-colors hover:border-primary'
+        : 'min-h-10 px-3 py-2 bg-background border-b border-border flex items-center justify-between cursor-pointer transition-colors hover:border-primary',
       label: 'text-xs font-mono',
       dropdown:
         'absolute z-40 w-full mt-1 bg-background border border-border shadow-2xl max-h-48 overflow-y-auto',
@@ -64,7 +71,7 @@ export function CustomSelect({
         'w-full text-left px-4 py-3 text-xs font-bold uppercase tracking-wider hover:bg-primary hover:text-primary-foreground flex items-center justify-between group transition-colors',
       optionActive: 'bg-primary/10 text-primary',
     }
-  }, [uiVariant])
+  }, [uiVariant, uiSize])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

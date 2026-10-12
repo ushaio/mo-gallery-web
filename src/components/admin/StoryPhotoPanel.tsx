@@ -300,14 +300,14 @@ export function StoryPhotoPanel({
         </div>
 
         {/* 素材筛选：全部 / 已使用 / 未使用 */}
-        <div className="flex shrink-0 gap-0.5 border-b border-border/50 bg-card px-4 py-1.5">
+        <div className="flex shrink-0 gap-0.5 border-b border-border/50 bg-card px-4 py-1">
           {filterTabs.map(({ key, label }) => (
             <button
               key={key}
               type="button"
               onClick={() => setFilterTab(key)}
               className={cn(
-                'rounded-md px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider transition-colors',
+                'flex h-7 items-center rounded-md px-2.5 text-[10px] font-medium uppercase tracking-wider transition-colors',
                 filterTab === key ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'
               )}
             >

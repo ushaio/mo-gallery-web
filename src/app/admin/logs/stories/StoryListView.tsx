@@ -197,7 +197,8 @@ export function StoryListView({
       {/* 工具栏与下方列表之间不再画满宽分隔线（与子标签栏同一口径，页面更一体化）：
           间距统一取子标签栏到内容区的 24px（`pt-6`），因此非紧凑态工具栏不再留 `pb-4`，
           否则「搜索框那一栏 → 列表」会明显大过「子标签栏 → 内容区」。
-          官网 `/console` 的 `StoryListView` 同步。 */}
+          官网 `/console` 的 `StoryListView` 同步。
+          紧凑态四个控件统一 32px 高：32 + `pb-3`(12) = 44px，与右侧编辑器头部的 `h-11` 对齐。 */}
       <div className={`flex shrink-0 items-center ${compact ? 'gap-1.5 px-1 pb-3' : 'justify-between'}`}>
         {compact ? (
           <>
@@ -208,7 +209,7 @@ export function StoryListView({
                 placeholder={t('admin.search_placeholder')}
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
-                className="h-[30px] w-full rounded-md border border-border bg-card px-3 pl-8 text-xs outline-none transition-colors focus:border-primary"
+                className="h-8 w-full rounded-md border border-border bg-card px-3 pl-8 text-xs outline-none transition-colors focus:border-primary"
               />
             </div>
             <AdminSelect
@@ -216,14 +217,15 @@ export function StoryListView({
               options={statusOptions}
               onChange={onStatusFilterChange}
               placeholder={t('admin.all_status')}
+              uiSize="sm"
               className="w-28 shrink-0"
             />
             {onRefresh ? (
-              <AdminButton onClick={onRefresh} adminVariant="outline" className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-md p-0" title={t('common.refresh')}>
+              <AdminButton onClick={onRefresh} adminVariant="outline" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md p-0" title={t('common.refresh')}>
                 <RefreshCw className="h-3.5 w-3.5" />
               </AdminButton>
             ) : null}
-            <AdminButton onClick={onCreateStory} adminVariant="primary" className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-md p-0" title={t('ui.create_story')}>
+            <AdminButton onClick={onCreateStory} adminVariant="primary" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md p-0" title={t('ui.create_story')}>
               <Plus className="h-4 w-4" />
             </AdminButton>
           </>
