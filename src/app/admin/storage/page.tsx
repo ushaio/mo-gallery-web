@@ -25,6 +25,7 @@ import {
   XCircle,
   type LucideIcon,
 } from 'lucide-react'
+import { Virtuoso } from 'react-virtuoso'
 import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import type { StorageFile, StorageScanStats } from '@/lib/api/types'
@@ -35,6 +36,12 @@ import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { Toast, type Notification } from '@/components/Toast'
 
 // ── 工具函数 ─────────────────────────────────────────────────
+
+/**
+ * 扫描结果的一行。服务端在 `StorageFile` 之上额外附了 `thumbnailUrl`，
+ * 这里按交集类型声明，避免为这一个可选字段去动共享包 api-client。
+ */
+type ScanFile = StorageFile & { thumbnailUrl?: string }
 
 const SIZE_UNITS = ['B', 'KB', 'MB', 'GB']
 
@@ -284,9 +291,15 @@ function StatusPill({ status, t }: { status: string; t: (key: string) => string 
   )
 }
 
-function FileThumb({ file, onClick }: { file: StorageFile; onClick: () => void }) {
-  const [failed, setFailed] = useState(false)
-  const showImage = isImageFile(file.key) && Boolean(file.url) && !failed && !isMissingStatus(file.status)
+function FileThumb({ file, onClick }: { file: ScanFile; onClick: () => void }) {
+  const [thumbFailed, setThumbFailed] = useState(false)
+  const [originalFailed, setOriginalFailed] = useState(false)
+
+  // 44px 的预览位优先用缩略图（几十 KB）；缩略图缺失或加载失败才回退到原图。
+  // 直接拿原图（单张 1–3MB、四千万像素级）填这一格，解码会压住主线程，
+  // 快速滚动时浏览器来不及栅格化，整片区域就会空着不画。
+  const src = file.thumbnailUrl && !thumbFailed ? file.thumbnailUrl : file.url
+  const showImage = isImageFile(file.key) && Boolean(src) && !originalFailed && !isMissingStatus(file.status)
 
   let placeholder = <FileImage size={15} className="text-muted-foreground" />
   if (file.status === 'missing') placeholder = <FileWarning size={15} className="text-red-400" />
@@ -298,7 +311,14 @@ function FileThumb({ file, onClick }: { file: StorageFile; onClick: () => void }
       onClick={onClick}
     >
       {showImage ? (
-        <img src={file.url} alt="" loading="lazy" onError={() => setFailed(true)} className="size-full object-cover" />
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => { if (file.thumbnailUrl && !thumbFailed) setThumbFailed(true); else setOriginalFailed(true) }}
+          className="size-full object-cover"
+        />
       ) : placeholder}
     </span>
   )
@@ -310,7 +330,7 @@ export default function StorageCleanupPage() {
   const { token } = useAuth()
   const { t } = useLanguage()
   const [provider, setProvider] = useState('local')
-  const [files, setFiles] = useState<StorageFile[]>([])
+  const [files, setFiles] = useState<ScanFile[]>([])
   const [stats, setStats] = useState<StorageScanStats>({
     total: 0, linked: 0, orphan: 0, missing: 0, missingOriginal: 0, missingThumbnail: 0,
   })
@@ -322,7 +342,7 @@ export default function StorageCleanupPage() {
   const [folderFilter, setFolderFilter] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [reuploadFile, setReuploadFile] = useState<StorageFile | null>(null)
+  const [reuploadFile, setReuploadFile] = useState<ScanFile | null>(null)
   const [showGuide, setShowGuide] = useState(false)
   const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false)
   const [cleanupDeleting, setCleanupDeleting] = useState(false)
@@ -560,7 +580,7 @@ export default function StorageCleanupPage() {
     }
   }
 
-  const handleGenerateThumb = async (file: StorageFile) => {
+  const handleGenerateThumb = async (file: ScanFile) => {
     if (!token || !file.photoId) return
     setGeneratingThumb(prev => new Set(prev).add(file.photoId!))
     try {
@@ -947,92 +967,100 @@ export default function StorageCleanupPage() {
                 </button>
               </div>
             ) : (
-              visibleFiles.map(file => {
-                const selectedRow = selected.has(file.key)
-                const name = file.key.split('/').pop() || file.key
-                const missing = isMissingStatus(file.status)
-                return (
-                  <div
-                    key={file.key}
-                    className="group flex items-center gap-3 border-b border-border px-3 py-2 transition-colors hover:bg-muted/30"
-                    style={{ backgroundColor: selectedRow ? 'color-mix(in srgb, var(--accent) 55%, transparent)' : undefined }}
-                  >
-                    <span className="flex w-8 shrink-0">
-                      <input
-                        type="checkbox"
-                        className="size-4 accent-[var(--primary)]"
-                        checked={selectedRow}
-                        onChange={() => toggleSelect(file.key)}
-                        disabled={file.status === 'linked'}
-                        title={file.status === 'linked' ? t('admin.storage_help_linked') : undefined}
+              <Virtuoso
+                data={visibleFiles}
+                // 过滤器/数据源变化时重建列表，避免停在上一份数据的中段
+                key={`${provider}|${statusFilter}|${search}|${folderFilter}`}
+                computeItemKey={(_, file) => file.key}
+                increaseViewportBy={{ top: 600, bottom: 900 }}
+                style={{ height: '100%' }}
+                itemContent={(_, file) => {
+                  const selectedRow = selected.has(file.key)
+                  const name = file.key.split('/').pop() || file.key
+                  const missing = isMissingStatus(file.status)
+                  return (
+                    <div
+                      key={file.key}
+                      className="group flex items-center gap-3 border-b border-border px-3 py-2 transition-colors hover:bg-muted/30"
+                      style={{ backgroundColor: selectedRow ? 'color-mix(in srgb, var(--accent) 55%, transparent)' : undefined }}
+                    >
+                      <span className="flex w-8 shrink-0">
+                        <input
+                          type="checkbox"
+                          className="size-4 accent-[var(--primary)]"
+                          checked={selectedRow}
+                          onChange={() => toggleSelect(file.key)}
+                          disabled={file.status === 'linked'}
+                          title={file.status === 'linked' ? t('admin.storage_help_linked') : undefined}
+                        />
+                      </span>
+                      <FileThumb
+                        file={file}
+                        onClick={() => { if (missing || isImageFile(file.key)) missing ? setReuploadFile(file) : setPreviewUrl(file.url) }}
                       />
-                    </span>
-                    <FileThumb
-                      file={file}
-                      onClick={() => { if (missing || isImageFile(file.key)) missing ? setReuploadFile(file) : setPreviewUrl(file.url) }}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div
-                        className={`truncate font-mono text-xs ${
-                          missing
-                            ? 'cursor-pointer hover:text-red-500 hover:underline'
-                            : isImageFile(file.key)
-                              ? 'cursor-pointer text-foreground hover:text-primary hover:underline'
-                              : ''
-                        }`}
-                        title={file.key}
-                        onClick={() => {
-                          if (missing) setReuploadFile(file)
-                          else if (isImageFile(file.key)) setPreviewUrl(file.url)
-                        }}
-                      >
-                        {name}
+                      <div className="min-w-0 flex-1">
+                        <div
+                          className={`truncate font-mono text-xs ${
+                            missing
+                              ? 'cursor-pointer hover:text-red-500 hover:underline'
+                              : isImageFile(file.key)
+                                ? 'cursor-pointer text-foreground hover:text-primary hover:underline'
+                                : ''
+                          }`}
+                          title={file.key}
+                          onClick={() => {
+                            if (missing) setReuploadFile(file)
+                            else if (isImageFile(file.key)) setPreviewUrl(file.url)
+                          }}
+                        >
+                          {name}
+                        </div>
+                        <div className="truncate text-[10px] text-muted-foreground">
+                          {folderOf(file.key)}
+                        </div>
                       </div>
-                      <div className="truncate text-[10px] text-muted-foreground">
-                        {folderOf(file.key)}
-                      </div>
+                      <span className="hidden w-44 shrink-0 truncate text-xs text-muted-foreground xl:block" title={file.photoTitle}>
+                        {file.photoTitle || '-'}
+                      </span>
+                      <span className="w-16 shrink-0 text-right text-xs tabular-nums">{formatSize(file.size)}</span>
+                      <span className="hidden w-24 shrink-0 text-right text-[11px] text-muted-foreground md:block">
+                        {file.lastModified ? new Date(file.lastModified).toLocaleDateString() : '-'}
+                      </span>
+                      <span className="flex w-28 shrink-0 justify-end">
+                        <StatusPill status={file.status} t={t} />
+                      </span>
+                      <span className="flex w-14 shrink-0 items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100">
+                        {isImageFile(file.key) && !missing && (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewUrl(file.url)}
+                            title={t('admin.preview')}
+                            className="rounded p-1 text-muted-foreground transition-colors hover:bg-secondary"
+                          >
+                            <Eye size={13} />
+                          </button>
+                        )}
+                        {file.status === 'linked' && !file.hasThumb && (
+                          <button
+                            type="button"
+                            onClick={() => void handleGenerateThumb(file)}
+                            disabled={generatingThumb.has(file.photoId || '')}
+                            title={t('admin.storage_generate')}
+                            className="rounded p-1 transition-colors hover:bg-secondary"
+                            style={{ color: generatingThumb.has(file.photoId || '') ? 'var(--muted-foreground)' : 'var(--primary)' }}
+                          >
+                            {generatingThumb.has(file.photoId || '') ? (
+                              <Loader2 size={13} className="animate-spin" />
+                            ) : (
+                              <RefreshCw size={13} />
+                            )}
+                          </button>
+                        )}
+                      </span>
                     </div>
-                    <span className="hidden w-44 shrink-0 truncate text-xs text-muted-foreground xl:block" title={file.photoTitle}>
-                      {file.photoTitle || '-'}
-                    </span>
-                    <span className="w-16 shrink-0 text-right text-xs tabular-nums">{formatSize(file.size)}</span>
-                    <span className="hidden w-24 shrink-0 text-right text-[11px] text-muted-foreground md:block">
-                      {file.lastModified ? new Date(file.lastModified).toLocaleDateString() : '-'}
-                    </span>
-                    <span className="flex w-28 shrink-0 justify-end">
-                      <StatusPill status={file.status} t={t} />
-                    </span>
-                    <span className="flex w-14 shrink-0 items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100">
-                      {isImageFile(file.key) && !missing && (
-                        <button
-                          type="button"
-                          onClick={() => setPreviewUrl(file.url)}
-                          title={t('admin.preview')}
-                          className="rounded p-1 text-muted-foreground transition-colors hover:bg-secondary"
-                        >
-                          <Eye size={13} />
-                        </button>
-                      )}
-                      {file.status === 'linked' && !file.hasThumb && (
-                        <button
-                          type="button"
-                          onClick={() => void handleGenerateThumb(file)}
-                          disabled={generatingThumb.has(file.photoId || '')}
-                          title={t('admin.storage_generate')}
-                          className="rounded p-1 transition-colors hover:bg-secondary"
-                          style={{ color: generatingThumb.has(file.photoId || '') ? 'var(--muted-foreground)' : 'var(--primary)' }}
-                        >
-                          {generatingThumb.has(file.photoId || '') ? (
-                            <Loader2 size={13} className="animate-spin" />
-                          ) : (
-                            <RefreshCw size={13} />
-                          )}
-                        </button>
-                      )}
-                    </span>
-                  </div>
-                )
-              })
+                  )
+                }}
+              />
             )}
           </div>
         </main>
