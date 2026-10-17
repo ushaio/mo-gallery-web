@@ -319,14 +319,6 @@ function getMutableNodeAtPath(root: JsonValue, path: readonly number[]): Record<
   return current
 }
 
-function comparePathsDescending(first: readonly number[], second: readonly number[]): number {
-  const sharedLength = Math.min(first.length, second.length)
-  for (let index = 0; index < sharedLength; index += 1) {
-    if (first[index] !== second[index]) return second[index] - first[index]
-  }
-  return second.length - first.length
-}
-
 function removeNodeAtPath(root: JsonValue, path: readonly number[]): void {
   if (path.length === 0) {
     throw new TypeError('The TipTap document root cannot be removed')
@@ -337,6 +329,44 @@ function removeNodeAtPath(root: JsonValue, path: readonly number[]): void {
   }
   parent.content.splice(path[path.length - 1], 1)
   if (parent.content.length === 0) delete parent.content
+}
+
+type EditorSchema = EditorState['schema']
+
+function contentArray(node: Record<string, JsonValue>): JsonValue[] {
+  return Array.isArray(node.content) ? node.content : []
+}
+
+/**
+ * 以「对象身份」为键记录每个节点当前所处的路径。
+ * 结构操作（insert/move/delete）会让基于路径的 nodeId 失效，节点对象本身却不变，
+ * 因此批内解析目标时统一按对象身份重新定位，而不是复用快照里的旧路径。
+ */
+function pathIndexByObject(root: JsonValue): Map<object, number[]> {
+  const index = new Map<object, number[]>()
+
+  const visit = (value: JsonValue, path: number[]): void => {
+    if (!isJsonRecord(value)) return
+    index.set(value, path)
+    const content = contentArray(value)
+    for (let childIndex = 0; childIndex < content.length; childIndex += 1) {
+      visit(content[childIndex], [...path, childIndex])
+    }
+  }
+
+  visit(root, [])
+  return index
+}
+
+/** 用编辑器真实 schema 校验一段节点 JSON；schema 不可用时跳过（无头调用）。 */
+function schemaNodeIssue(schema: EditorSchema | undefined, node: JsonValue): string | null {
+  if (schema === undefined) return null
+  try {
+    schema.nodeFromJSON(node).check()
+    return null
+  } catch (error) {
+    return error instanceof Error ? error.message : 'Node does not match the editor schema'
+  }
 }
 
 function indexProseMirrorTextNodes(doc: ProseMirrorNode): Map<string, PositionedTextNode> {
@@ -428,56 +458,357 @@ export function createNarrativeDirectEditHost(
       const canonicalSnapshot = createSnapshot(options, snapshot.root)
       assertEditorAiRevision(snapshot.revision, canonicalSnapshot.revision)
 
+      const schema = options.getEditorState?.().schema
       const nodeById = new Map(canonicalSnapshot.nodes.map((node) => [node.id, node]))
       const validationIssues: EditorAiValidationIssue[] = []
-      const replacements: ValidatedReplacement[] = []
+      const queuedReplacements = new Map<string, ValidatedReplacement[]>()
+      const changeEntryByOperationId = new Map<string, ReadonlyAiChangeEntry>()
+
+      const sandboxRoot = toInertJson(canonicalSnapshot.root, 'Narrative snapshot root')
+      const baseObjects = new Map<string, Record<string, JsonValue>>()
+      for (const entry of indexNarrativeNodes(sandboxRoot)) {
+        baseObjects.set(entry.snapshot.id, getMutableNodeAtPath(sandboxRoot, entry.path))
+      }
+      let objectPaths = pathIndexByObject(sandboxRoot)
+
+      // nodeId 由路径派生，批内结构操作会让后续旧 id 位移；因此统一按「节点对象身份」重新定位当前路径。
+      const currentNodeAt = (
+        nodeId: string,
+      ): { object: Record<string, JsonValue>; path: number[] } | undefined => {
+        const object = baseObjects.get(nodeId)
+        if (object === undefined) return undefined
+        const path = objectPaths.get(object)
+        if (path === undefined) return undefined
+        return { object, path: [...path] }
+      }
+      const nodeTypeLabel = (object: Record<string, JsonValue>): string => (
+        typeof object.type === 'string' ? object.type : 'node'
+      )
+      // 行内格式：add 覆盖同类型 mark、remove 删除、replace 整体替换；null 表示该 mark 类型要被移除。
+      const computeTextMarks = (
+        existing: JsonValue[],
+        requested: Map<string, JsonValue | null>,
+        mode: 'add' | 'remove' | 'replace',
+      ): JsonValue[] => {
+        const kept: JsonValue[] = mode === 'replace'
+          ? []
+          : existing.filter((mark) => !(isJsonRecord(mark) && typeof mark.type === 'string' && requested.has(mark.type)))
+        if (mode === 'remove') return kept
+        const added = [...requested.values()].filter((mark): mark is JsonValue => mark !== null)
+        return [...kept, ...added]
+      }
 
       for (const operation of operations) {
         throwIfAborted(signal)
-        if (operation.type !== 'replace_text') {
+
+        if (operation.type === 'replace_text') {
+          const target = nodeById.get(operation.nodeId)
+          if (target === undefined) {
+            validationIssues.push(issue('target_not_found', `Node ${operation.nodeId} was not found`, operation))
+            continue
+          }
+          if (target.type !== 'text' || target.text === undefined) {
+            validationIssues.push(issue('target_not_text', `Node ${operation.nodeId} is not an editable text node`, operation))
+            continue
+          }
+          if (
+            !Number.isInteger(operation.from)
+            || !Number.isInteger(operation.to)
+            || operation.from < 0
+            || operation.to < operation.from
+            || operation.to > target.text.length
+          ) {
+            validationIssues.push(issue(
+              'invalid_text_range',
+              `Text range ${operation.from}-${operation.to} is outside node ${operation.nodeId}`,
+              operation,
+            ))
+            continue
+          }
+          // 文本替换延后到结构操作之后再执行：结构操作不改变文本偏移，却可能删除目标节点。
+          const grouped = queuedReplacements.get(operation.nodeId) ?? []
+          grouped.push({ operation, target })
+          queuedReplacements.set(operation.nodeId, grouped)
+          continue
+        }
+
+        if (operation.type === 'set_node_attrs') {
+          const current = currentNodeAt(operation.nodeId)
+          if (current === undefined) {
+            validationIssues.push(issue(
+              'target_not_found',
+              `Node ${operation.nodeId} is unavailable (it may have been changed earlier in this batch)`,
+              operation,
+            ))
+            continue
+          }
+          if (current.path.length === 0) {
+            validationIssues.push(issue('root_node_immutable', 'The document root has no editable attributes', operation))
+            continue
+          }
+          const before = isJsonRecord(current.object.attrs) ? current.object.attrs : {}
+          // operation.attrs 来自只读的模型输入，转为可变 JSON 后再合并，避免只读类型污染编辑器文档。
+          const merged = toInertJson({ ...before, ...operation.attrs }, 'Narrative node attributes')
+          const schemaError = schemaNodeIssue(schema, { ...current.object, attrs: merged })
+          if (schemaError !== null) {
+            validationIssues.push(issue(
+              'invalid_node_attrs',
+              `Attributes are not valid for node ${operation.nodeId} (${nodeTypeLabel(current.object)}): ${schemaError}`,
+              operation,
+            ))
+            continue
+          }
+          current.object.attrs = merged
+          changeEntryByOperationId.set(operation.operationId, {
+            operation: 'set_node_attrs',
+            targetId: operation.nodeId,
+            targetLabel: nodeTypeLabel(current.object),
+            category: 'style',
+            before,
+            after: merged,
+          })
+          continue
+        }
+
+        if (operation.type === 'set_text_marks') {
+          const current = currentNodeAt(operation.nodeId)
+          if (current === undefined) {
+            validationIssues.push(issue(
+              'target_not_found',
+              `Node ${operation.nodeId} is unavailable (it may have been changed earlier in this batch)`,
+              operation,
+            ))
+            continue
+          }
+          if (current.object.type !== 'text' || typeof current.object.text !== 'string') {
+            validationIssues.push(issue('target_not_text', `Node ${operation.nodeId} is not an editable text node`, operation))
+            continue
+          }
+          const text = current.object.text
+          if (
+            !Number.isInteger(operation.from)
+            || !Number.isInteger(operation.to)
+            || operation.from < 0
+            || operation.to <= operation.from
+            || operation.to > text.length
+          ) {
+            validationIssues.push(issue(
+              'invalid_text_range',
+              `Text range ${operation.from}-${operation.to} is outside node ${operation.nodeId}`,
+              operation,
+            ))
+            continue
+          }
+          const mode = operation.mode ?? 'add'
+          const requestedMarks = new Map<string, JsonValue | null>()
+          let markIssue: EditorAiValidationIssue | undefined
+          for (const mark of operation.marks) {
+            const markType = typeof mark.type === 'string' ? mark.type : ''
+            if (markType.length === 0) {
+              markIssue = issue('invalid_text_marks', 'Every text mark needs a non-empty mark type', operation)
+              break
+            }
+            if (schema !== undefined && schema.marks[markType] === undefined) {
+              markIssue = issue('invalid_text_marks', `Mark type ${markType} is not available in this editor`, operation)
+              break
+            }
+            if (mode === 'remove' || mark.attrs === undefined) {
+              requestedMarks.set(markType, mode === 'remove' ? null : { type: markType })
+              continue
+            }
+            requestedMarks.set(markType, {
+              type: markType,
+              attrs: toInertJson(mark.attrs, 'Narrative text mark attributes'),
+            })
+          }
+          if (markIssue !== undefined) {
+            validationIssues.push(markIssue)
+            continue
+          }
+          const parentPath = current.path.slice(0, -1)
+          const nodeIndex = current.path[current.path.length - 1]
+          const parentNode = parentPath.length === 0 ? sandboxRoot : getMutableNodeAtPath(sandboxRoot, parentPath)
+          if (!isJsonRecord(parentNode)) {
+            validationIssues.push(issue('target_not_found', `Node ${operation.nodeId} has no editable parent`, operation))
+            continue
+          }
+          const existingMarks: JsonValue[] = Array.isArray(current.object.marks) ? current.object.marks : []
+          const nextMarks = computeTextMarks(existingMarks, requestedMarks, mode)
+          const before = text.slice(0, operation.from)
+          const covered = text.slice(operation.from, operation.to)
+          const after = text.slice(operation.to)
+          // 一段文本可能只有部分带格式，按区间把文本节点拆成 before/covered/after 三段（空段不保留）。
+          const base = toInertJson(current.object, 'Narrative text node') as Record<string, JsonValue>
+          const coveredNode: Record<string, JsonValue> = { ...base, text: covered }
+          if (nextMarks.length === 0) delete coveredNode.marks
+          else coveredNode.marks = toInertJson(nextMarks, 'Narrative text marks')
+          const replacement: JsonValue[] = []
+          if (before.length > 0) replacement.push({ ...base, text: before })
+          replacement.push(coveredNode)
+          if (after.length > 0) replacement.push({ ...base, text: after })
+          contentArray(parentNode).splice(nodeIndex, 1, ...replacement)
+          objectPaths = pathIndexByObject(sandboxRoot)
+          changeEntryByOperationId.set(operation.operationId, {
+            operation: 'set_text_marks',
+            targetId: operation.nodeId,
+            targetLabel: nodeTypeLabel(current.object),
+            category: 'style',
+            before: { text: covered, marks: toInertJson(existingMarks, 'Narrative text marks') },
+            after: { text: covered, marks: toInertJson(nextMarks, 'Narrative text marks') },
+          })
+          continue
+        }
+
+        if (operation.type === 'insert_node') {
+          const parent = currentNodeAt(operation.parentId)
+          if (parent === undefined) {
+            validationIssues.push(issue('target_not_found', `Parent node ${operation.parentId} is unavailable`, operation))
+            continue
+          }
+          const content = contentArray(parent.object)
+          if (operation.index > content.length) {
+            validationIssues.push(issue(
+              'invalid_insert_index',
+              `Insert index ${operation.index} exceeds the ${content.length} children of ${operation.parentId}`,
+              operation,
+            ))
+            continue
+          }
+          // 插入内容同样先转成可变 JSON，后续才能挂进沙箱文档树。
+          const insertedNode = toInertJson(operation.node, 'Inserted narrative node')
+          const insertedType = isJsonRecord(insertedNode) ? insertedNode.type : undefined
+          if (typeof insertedType !== 'string') {
+            validationIssues.push(issue(
+              'invalid_node_payload',
+              'Inserted node must be a JSON object with a string "type"',
+              operation,
+            ))
+            continue
+          }
+          const schemaError = schemaNodeIssue(schema, insertedNode)
+          if (schemaError !== null) {
+            validationIssues.push(issue(
+              'invalid_node_payload',
+              `Inserted node is not valid for the editor schema: ${schemaError}`,
+              operation,
+            ))
+            continue
+          }
+          if (!Array.isArray(parent.object.content)) parent.object.content = []
+          contentArray(parent.object).splice(operation.index, 0, insertedNode)
+          objectPaths = pathIndexByObject(sandboxRoot)
+          changeEntryByOperationId.set(operation.operationId, {
+            operation: 'insert_node',
+            targetId: operation.parentId,
+            targetLabel: nodeTypeLabel(parent.object),
+            category: 'structure',
+            after: { type: insertedType },
+          })
+          continue
+        }
+
+        if (operation.type === 'move_node') {
+          const current = currentNodeAt(operation.nodeId)
+          if (current === undefined) {
+            validationIssues.push(issue('target_not_found', `Node ${operation.nodeId} is unavailable`, operation))
+            continue
+          }
+          if (current.path.length === 0) {
+            validationIssues.push(issue('root_node_immutable', 'The document root cannot be moved', operation))
+            continue
+          }
+          const targetParent = currentNodeAt(operation.targetParentId)
+          if (targetParent === undefined) {
+            validationIssues.push(issue('target_not_found', `Target parent ${operation.targetParentId} is unavailable`, operation))
+            continue
+          }
+          const isOwnDescendant = (
+            targetParent.path.length >= current.path.length
+            && current.path.every((value, index) => targetParent.path[index] === value)
+          )
+          if (isOwnDescendant) {
+            validationIssues.push(issue(
+              'invalid_move_target',
+              `Node ${operation.nodeId} cannot be moved into itself or its own descendant ${operation.targetParentId}`,
+              operation,
+            ))
+            continue
+          }
+          const sameParent = current.path.length === targetParent.path.length + 1
+            && current.path.slice(0, -1).every((value, index) => targetParent.path[index] === value)
+          const maxIndex = contentArray(targetParent.object).length - (sameParent ? 1 : 0)
+          if (operation.index > maxIndex) {
+            validationIssues.push(issue(
+              'invalid_move_index',
+              `Move index ${operation.index} exceeds position count ${maxIndex} in ${operation.targetParentId}`,
+              operation,
+            ))
+            continue
+          }
+          const previousParentPath = current.path.slice(0, -1)
+          const previousIndex = current.path[current.path.length - 1]
+          const previousParent = getMutableNodeAtPath(sandboxRoot, previousParentPath)
+          const [moved] = contentArray(previousParent).splice(previousIndex, 1)
+          if (moved === undefined) {
+            throw new EditorAiExecutionError(
+              'simulation_failed',
+              'Validated narrative move target disappeared from sandbox',
+            )
+          }
+          const insertionIndex = sameParent && operation.index > previousIndex
+            ? operation.index - 1
+            : operation.index
+          const insertionParent = sameParent ? previousParent : targetParent.object
+          if (!Array.isArray(insertionParent.content)) insertionParent.content = []
+          contentArray(insertionParent).splice(insertionIndex, 0, moved)
+          objectPaths = pathIndexByObject(sandboxRoot)
+          changeEntryByOperationId.set(operation.operationId, {
+            operation: 'move_node',
+            targetId: operation.nodeId,
+            targetLabel: nodeTypeLabel(current.object),
+            category: 'structure',
+            before: { parentId: nodeIdForPath(previousParentPath), index: previousIndex },
+            after: { parentId: operation.targetParentId, index: operation.index },
+          })
+          continue
+        }
+
+        // 未识别的操作类型（例如误传进叙事批次的 zine 操作）必须显式拒绝，绝不能落到下面的删除分支。
+        const fallbackType: string = operation.type
+        if (fallbackType !== 'delete_node') {
           validationIssues.push(issue(
             'unsupported_operation',
-            `Narrative direct-edit does not support ${operation.type} yet`,
+            `Narrative direct-edit does not support ${fallbackType}`,
             operation,
           ))
           continue
         }
-
-        const target = nodeById.get(operation.nodeId)
-        if (target === undefined) {
-          validationIssues.push(issue('target_not_found', `Node ${operation.nodeId} was not found`, operation))
+        const current = currentNodeAt(operation.nodeId)
+        if (current === undefined) {
+          validationIssues.push(issue('target_not_found', `Node ${operation.nodeId} is unavailable`, operation))
           continue
         }
-        if (target.type !== 'text' || target.text === undefined) {
-          validationIssues.push(issue('target_not_text', `Node ${operation.nodeId} is not an editable text node`, operation))
+        if (current.path.length === 0) {
+          validationIssues.push(issue('root_node_immutable', 'The document root cannot be deleted', operation))
           continue
         }
-        if (
-          !Number.isInteger(operation.from)
-          || !Number.isInteger(operation.to)
-          || operation.from < 0
-          || operation.to < operation.from
-          || operation.to > target.text.length
-        ) {
-          validationIssues.push(issue(
-            'invalid_text_range',
-            `Text range ${operation.from}-${operation.to} is outside node ${operation.nodeId}`,
-            operation,
-          ))
-          continue
-        }
-        replacements.push({ operation, target })
-      }
-
-      const replacementsByNode = new Map<string, ValidatedReplacement[]>()
-      for (const replacement of replacements) {
-        const grouped = replacementsByNode.get(replacement.operation.nodeId) ?? []
-        grouped.push(replacement)
-        replacementsByNode.set(replacement.operation.nodeId, grouped)
+        const deletedType = nodeTypeLabel(current.object)
+        const deletedText = typeof current.object.text === 'string'
+          ? current.object.text.slice(0, 200)
+          : undefined
+        removeNodeAtPath(sandboxRoot, current.path)
+        objectPaths = pathIndexByObject(sandboxRoot)
+        changeEntryByOperationId.set(operation.operationId, {
+          operation: 'delete_node',
+          targetId: operation.nodeId,
+          targetLabel: deletedType,
+          category: 'structure',
+          before: deletedText === undefined ? { type: deletedType } : { type: deletedType, text: deletedText },
+        })
       }
 
       const conflictingOperationIds = new Set<string>()
-      for (const grouped of replacementsByNode.values()) {
+      for (const grouped of queuedReplacements.values()) {
         for (let firstIndex = 0; firstIndex < grouped.length; firstIndex += 1) {
           for (let secondIndex = firstIndex + 1; secondIndex < grouped.length; secondIndex += 1) {
             if (rangesConflict(grouped[firstIndex].operation, grouped[secondIndex].operation)) {
@@ -487,13 +818,15 @@ export function createNarrativeDirectEditHost(
           }
         }
       }
-      for (const replacement of replacements) {
-        if (conflictingOperationIds.has(replacement.operation.operationId)) {
-          validationIssues.push(issue(
-            'overlapping_text_ranges',
-            `Text range for ${replacement.operation.operationId} conflicts with another operation`,
-            replacement.operation,
-          ))
+      for (const grouped of queuedReplacements.values()) {
+        for (const replacement of grouped) {
+          if (conflictingOperationIds.has(replacement.operation.operationId)) {
+            validationIssues.push(issue(
+              'overlapping_text_ranges',
+              `Text range for ${replacement.operation.operationId} conflicts with another operation`,
+              replacement.operation,
+            ))
+          }
         }
       }
 
@@ -501,47 +834,72 @@ export function createNarrativeDirectEditHost(
         return failedSimulation(canonicalSnapshot, validationIssues)
       }
 
-      const sandboxRoot = toInertJson(canonicalSnapshot.root, 'Narrative snapshot root')
-      const sandboxIndex = new Map(indexNarrativeNodes(sandboxRoot).map((entry) => [entry.snapshot.id, entry]))
-      const changeEntries: ReadonlyAiChangeEntry[] = replacements.map(({ operation, target }) => ({
-        operation: 'replace_text',
-        targetId: operation.nodeId,
-        targetLabel: target.type,
-        category: 'content',
-        before: target.text?.slice(operation.from, operation.to) ?? '',
-        after: operation.replacement,
-      }))
-      const emptiedTextNodePaths: number[][] = []
-
-      for (const grouped of replacementsByNode.values()) {
-        const descending = [...grouped].sort((first, second) => second.operation.from - first.operation.from)
-        const indexedTarget = sandboxIndex.get(descending[0].operation.nodeId)
-        if (indexedTarget === undefined) {
-          throw new EditorAiExecutionError('simulation_failed', 'Validated narrative target disappeared from sandbox')
+      for (const [nodeId, grouped] of queuedReplacements) {
+        const current = currentNodeAt(nodeId)
+        if (current === undefined) {
+          for (const { operation } of grouped) {
+            validationIssues.push(issue(
+              'target_not_found',
+              `Node ${nodeId} is unavailable (it may have been deleted earlier in this batch)`,
+              operation,
+            ))
+          }
+          continue
         }
-        const mutableTarget = getMutableNodeAtPath(sandboxRoot, indexedTarget.path)
-        let text = typeof mutableTarget.text === 'string' ? mutableTarget.text : ''
-        for (const { operation } of descending) {
+        const descending = [...grouped].sort((first, second) => second.operation.from - first.operation.from)
+        let text = typeof current.object.text === 'string' ? current.object.text : ''
+        for (const { operation, target } of descending) {
           text = `${text.slice(0, operation.from)}${operation.replacement}${text.slice(operation.to)}`
+          changeEntryByOperationId.set(operation.operationId, {
+            operation: 'replace_text',
+            targetId: operation.nodeId,
+            targetLabel: target.type,
+            category: 'content',
+            before: target.text?.slice(operation.from, operation.to) ?? '',
+            after: operation.replacement,
+          })
         }
         if (text.length === 0) {
-          emptiedTextNodePaths.push(indexedTarget.path)
+          removeNodeAtPath(sandboxRoot, current.path)
+          objectPaths = pathIndexByObject(sandboxRoot)
         } else {
-          mutableTarget.text = text
+          current.object.text = text
         }
       }
 
-      for (const path of emptiedTextNodePaths.sort(comparePathsDescending)) {
-        removeNodeAtPath(sandboxRoot, path)
+      if (validationIssues.length > 0) {
+        return failedSimulation(canonicalSnapshot, validationIssues)
+      }
+
+      // 定型：ProseMirror 的 fromJSON 会补齐节点默认属性，若不归一化，commit 阶段的
+      // 「事务结果 JSON 与模拟结果逐字节相等」校验会必然失败。
+      let resultRoot: JsonValue = sandboxRoot
+      if (schema !== undefined) {
+        try {
+          const normalizedDocument = schema.nodeFromJSON(sandboxRoot)
+          normalizedDocument.check()
+          resultRoot = normalizedDocument.toJSON() as JsonValue
+        } catch (error) {
+          return failedSimulation(canonicalSnapshot, [{
+            code: 'invalid_document',
+            severity: 'error',
+            message: `The edited document is no longer valid for the editor schema: ${
+              error instanceof Error ? error.message : 'unknown error'
+            }`,
+          }])
+        }
       }
 
       throwIfAborted(signal)
-      const resultSnapshot = createSnapshot(options, sandboxRoot)
+      const resultSnapshot = createSnapshot(options, resultRoot)
       const result: EditorAiSimulationResult<NarrativeDocumentSnapshot> = {
         snapshot: resultSnapshot,
         resultRevision: resultSnapshot.revision,
         issues: [],
-        changeEntries,
+        changeEntries: operations.flatMap((operation) => {
+          const entry = changeEntryByOperationId.get(operation.operationId)
+          return entry === undefined ? [] : [entry]
+        }),
       }
       successfulSimulationOperations.set(
         result,
@@ -598,64 +956,76 @@ export function createNarrativeDirectEditHost(
         )
       }
 
-      const positionedNodes = indexProseMirrorTextNodes(state.doc)
-      const positionedReplacements: Array<{
-        operation: DeepReadonly<Extract<NarrativeEditorOperation, { type: 'replace_text' }>>
-        target: PositionedTextNode
-        from: number
-        to: number
-      }> = []
-
-      for (const operation of batch.operations) {
-        if (operation.type !== 'replace_text') {
-          throw new EditorAiExecutionError(
-            'validation_failed',
-            `Narrative direct-edit commit does not support ${operation.type}`,
-          )
-        }
-        const target = positionedNodes.get(operation.nodeId)
-        if (target === undefined || !target.node.isText) {
-          throw new EditorAiExecutionError(
-            'validation_failed',
-            `Narrative text node ${operation.nodeId} is unavailable during commit`,
-          )
-        }
-        if (
-          !Number.isInteger(operation.from)
-          || !Number.isInteger(operation.to)
-          || operation.from < 0
-          || operation.to < operation.from
-          || operation.to > target.node.textContent.length
-        ) {
-          throw new EditorAiExecutionError(
-            'validation_failed',
-            `Narrative text range ${operation.from}-${operation.to} is invalid during commit`,
-          )
-        }
-        positionedReplacements.push({
-          operation,
-          target,
-          from: target.pos + operation.from,
-          to: target.pos + operation.to,
-        })
-      }
-
-      positionedReplacements.sort((first, second) => {
-        if (first.from !== second.from) return second.from - first.from
-        return second.to - first.to
-      })
-
       let transaction = state.tr
-      for (const replacement of positionedReplacements) {
-        if (replacement.operation.replacement.length === 0) {
-          transaction = transaction.delete(replacement.from, replacement.to)
-        } else {
-          transaction = transaction.replaceWith(
-            replacement.from,
-            replacement.to,
-            state.schema.text(replacement.operation.replacement, replacement.target.node.marks),
+      if (batch.operations.every((operation) => operation.type === 'replace_text')) {
+        const positionedNodes = indexProseMirrorTextNodes(state.doc)
+        const positionedReplacements: Array<{
+          operation: DeepReadonly<Extract<NarrativeEditorOperation, { type: 'replace_text' }>>
+          target: PositionedTextNode
+          from: number
+          to: number
+        }> = []
+
+        for (const operation of batch.operations) {
+          const target = positionedNodes.get(operation.nodeId)
+          if (target === undefined || !target.node.isText) {
+            throw new EditorAiExecutionError(
+              'validation_failed',
+              `Narrative text node ${operation.nodeId} is unavailable during commit`,
+            )
+          }
+          if (
+            !Number.isInteger(operation.from)
+            || !Number.isInteger(operation.to)
+            || operation.from < 0
+            || operation.to < operation.from
+            || operation.to > target.node.textContent.length
+          ) {
+            throw new EditorAiExecutionError(
+              'validation_failed',
+              `Narrative text range ${operation.from}-${operation.to} is invalid during commit`,
+            )
+          }
+          positionedReplacements.push({
+            operation,
+            target,
+            from: target.pos + operation.from,
+            to: target.pos + operation.to,
+          })
+        }
+
+        positionedReplacements.sort((first, second) => {
+          if (first.from !== second.from) return second.from - first.from
+          return second.to - first.to
+        })
+
+        for (const replacement of positionedReplacements) {
+          if (replacement.operation.replacement.length === 0) {
+            transaction = transaction.delete(replacement.from, replacement.to)
+          } else {
+            transaction = transaction.replaceWith(
+              replacement.from,
+              replacement.to,
+              state.schema.text(replacement.operation.replacement, replacement.target.node.marks),
+            )
+          }
+        }
+      } else {
+        // 结构 / 属性类批量：nodeId 由路径派生，批内结构操作会让后续旧 id 位移，
+        // 逐条重放容易错位。这里直接以「已通过 schema 校验并定型的模拟结果」整篇替换文档内容，
+        // 紧随其后的 revision + JSON 逐字节相等校验会证明事务结果与模拟结果完全一致。
+        let targetDocument: ProseMirrorNode
+        try {
+          targetDocument = state.schema.nodeFromJSON(simulation.snapshot.root)
+        } catch (error) {
+          throw new EditorAiExecutionError(
+            'validation_failed',
+            `Narrative simulation result is not a valid editor document: ${
+              error instanceof Error ? error.message : 'unknown error'
+            }`,
           )
         }
+        transaction = transaction.replaceWith(0, state.doc.content.size, targetDocument.content)
       }
 
       const historyEntryId = `${batch.taskId}:${simulation.resultRevision}`

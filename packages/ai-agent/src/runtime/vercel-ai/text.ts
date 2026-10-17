@@ -11,6 +11,7 @@ import type {
 import { createAbortError, normalizeAiError } from './errors'
 import { toVercelAiModelInput } from './messages'
 import { createVercelAiLanguageModel } from './provider'
+import { toJsonSafeValue } from './tool-output'
 
 export interface StreamVercelAiTextOptions {
   endpoint: EditorAiEndpoint
@@ -32,10 +33,13 @@ function toVercelTools(tools?: Record<string, EditorAiRuntimeTool>) {
   return Object.fromEntries(Object.entries(tools).map(([name, definition]) => [name, dynamicTool({
     description: definition.description,
     inputSchema: jsonSchema(definition.inputSchema),
-    execute: (input, options) => definition.execute(input, {
+    // 返回值必须先净化为纯 JSON：SDK 会把工具结果原样放进下一轮消息，class 实例
+    // （Wails 绑定返回的就是 class）、Date、数组里的 undefined 都会让下一步校验抛
+    // "Invalid prompt: The messages do not match the ModelMessage[] schema."。见 tool-output.ts。
+    execute: async (input, options) => toJsonSafeValue(await definition.execute(input, {
       signal: options.abortSignal,
       toolCallId: options.toolCallId,
-    }),
+    })),
   })]))
 }
 

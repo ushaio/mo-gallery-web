@@ -39,6 +39,8 @@ function ArticleCover({ item }: { item: WeChatArticleItem }) {
     )
   }
   return (
+    // 微信封面是外域临时链接，走 next/image 无意义（next.config 已是 images.unoptimized）
+    // eslint-disable-next-line @next/next/no-img-element
     <img
       src={item.coverUrl}
       alt=""
@@ -75,14 +77,22 @@ export function WeChatArticleTab({ token, t, refreshKey = 0 }: WeChatArticleTabP
   }, [token])
 
   // 切换筛选时才请求；数据本身存在云端库里，切换筛选不会每次都打微信
-  useEffect(() => { void load(kind) }, [kind, load])
+  useEffect(() => { queueMicrotask(() => { void load(kind) }) }, [kind, load])
 
   // 双击页签 = 强制与微信同步一次（首次值为 0，跳过首轮）
   useEffect(() => {
-    if (refreshKey > 0) void load(kind, true)
+    if (refreshKey > 0) queueMicrotask(() => { void load(kind, true) })
   }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps -- 只认外部递增的 refreshKey
 
-  const syncedLabel = page?.syncedAt ? formatRelativeTimeLabel(page.syncedAt) : ''
+  // syncedAt / updateTime 都是 ISO8601 字符串，formatRelativeTimeLabel 吃的是毫秒时间戳
+  const toTimestamp = (value: string | null | undefined): number | null => {
+    if (!value) return null
+    const parsed = Date.parse(value)
+    return Number.isNaN(parsed) ? null : parsed
+  }
+
+  const syncedAt = toTimestamp(page?.syncedAt)
+  const syncedLabel = syncedAt === null ? '' : formatRelativeTimeLabel(syncedAt, t, 'datetime')
 
   return (
     <div className="flex h-full flex-col gap-6 overflow-hidden">
@@ -167,7 +177,9 @@ export function WeChatArticleTab({ token, t, refreshKey = 0 }: WeChatArticleTabP
                   </p>
                   <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
                     {item.author ? <span className="truncate">{item.author}</span> : null}
-                    {item.updateTime ? <span>{formatRelativeTimeLabel(item.updateTime)}</span> : null}
+                    {toTimestamp(item.updateTime) !== null ? (
+                      <span>{formatRelativeTimeLabel(toTimestamp(item.updateTime)!, t, 'datetime')}</span>
+                    ) : null}
                     {item.isDeleted ? (
                       <span className="text-destructive">{t('admin.wechat_articles_deleted')}</span>
                     ) : null}

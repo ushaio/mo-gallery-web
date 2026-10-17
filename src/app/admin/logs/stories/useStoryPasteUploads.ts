@@ -12,6 +12,13 @@ interface UploadAndInsertParams {
   insertUploadPlaceholder: (placeholder: { uploadId: string; fileName: string; imageWidth: number; imageHeight: number }) => void
   resolveUploadPlaceholder: (uploadId: string, photo: PhotoDto) => boolean
   failUploadPlaceholder: (uploadId: string) => void
+  /**
+   * 粘贴失败时把文件补登记进素材面板（失败态待传项）。
+   *
+   * 粘贴链路不走素材面板，文件从来没进过 pendingImages；不补登记的话，用户
+   * 在面板里看不到它、也没有「重试」按钮，只能删掉卡片重新粘一次。
+   */
+  registerFailedPasteUpload: (input: { uploadId: string; file: File; error?: string }) => Promise<void>
   findExistingPhotoById: (photoId: string) => Promise<PhotoDto | null>
   addPhotoToCache: (photo: PhotoDto) => void
   addPhotoToCurrentStory: (photo: PhotoDto) => void
@@ -55,6 +62,7 @@ export function useStoryPasteUploads({
   insertUploadPlaceholder,
   resolveUploadPlaceholder,
   failUploadPlaceholder,
+  registerFailedPasteUpload,
   findExistingPhotoById,
   addPhotoToCache,
   addPhotoToCurrentStory,
@@ -143,6 +151,13 @@ export function useStoryPasteUploads({
           failUploadPlaceholder(placeholder.id)
           const message = error instanceof Error ? error.message : '粘贴图片处理失败'
           console.error(`Failed to process pasted image ${file.name}:`, error)
+          // 恢复入口统一留在素材面板的「重试」上：把这份文件补登记成失败态待传项，
+          // 重试成功后按同一个 uploadId 原位替换卡片。
+          try {
+            await registerFailedPasteUpload({ uploadId: placeholder.id, file, error: message })
+          } catch (registerError) {
+            console.error(`Failed to register failed pasted image ${file.name}:`, registerError)
+          }
           notify(`${file.name}：${message}`, 'error')
         }
       }
@@ -163,6 +178,7 @@ export function useStoryPasteUploads({
     notify,
     pendingPasteFilesRef,
     persistPasteUploadSettings,
+    registerFailedPasteUpload,
     resolveUploadPlaceholder,
     setIsUploading,
     setShowPasteUploadSettings,

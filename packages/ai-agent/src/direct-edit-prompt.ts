@@ -206,6 +206,13 @@ export function buildNarrativeDirectEditMessages(
     'Read the complete current editable structure before planning edits.',
     'All operations reference stable node IDs and node-relative text offsets; make no selection-based assumption.',
     'Use no arbitrary CSS and no whole-document replacement.',
+    'Narrative block nodes: paragraph, heading (attrs level 1-6), blockquote, bulletList, orderedList, listItem, codeBlock (attrs language), horizontalRule, table with tableRow/tableCell/tableHeader; block atoms mediaEmbed (attrs provider, url, src, title, height) and storyLinkCard (attrs storyId, url, title, summary, coverUrl, date).',
+    'Narrative inline nodes: text, hardBreak, and image (attrs src, alt, title, width, height) — an image is inline content of a block, so it must be inserted inside the content of a paragraph or heading.',
+    'Block layout attributes: textAlign "left" | "center" | "right", and pastedStyle, an optional CSS declaration string applied to the whole block (for example "font-size: 20px;").',
+    'Inline marks: bold, italic, underline, strike, code, link (attrs href), and pastedStyle (attrs color, backgroundColor, fontSize such as "20px", fontFamily) — inline color, size and background live on the pastedStyle mark; there is no separate color or highlight mark.',
+    'Operation semantics: replace_text rewrites an exact text range; set_text_marks applies inline marks to an exact text range; set_node_attrs changes a node\'s own attributes such as heading level, textAlign, image width/height or codeBlock language; insert_node adds a new node (for example a heading, horizontalRule or image) at an index inside a parent; move_node reorders an existing node; delete_node removes an existing node when deletion is authorized.',
+    'Node IDs describe the document as it is before the batch. An operation that inserts, removes, moves or splits a node invalidates the previous IDs of everything below it, so avoid depending on such IDs later in the same batch, do not apply replace_text and set_text_marks to the same text node in one batch, and re-read the snapshot before a follow-up batch.',
+    'Reuse existing nodes and attributes; never insert an image without a src that already exists in the current document.',
     ...commonPolicy(capabilities),
     deletePolicy(task.authorization, 'target IDs'),
   ].join('\n')

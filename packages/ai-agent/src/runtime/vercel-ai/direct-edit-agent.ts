@@ -24,6 +24,7 @@ import {
   MAX_EDITOR_OPERATION_BATCH_SUMMARIES,
   MAX_EDITOR_OPERATION_ID_LENGTH,
   MAX_EDITOR_OPERATION_JSON_LENGTH,
+  MAX_EDITOR_OPERATION_MARKS,
   MAX_EDITOR_OPERATION_REPLACEMENT_LENGTH,
   MAX_EDITOR_OPERATION_SUMMARY_LENGTH,
   MAX_EDITOR_TEMPLATE_TARGET_SLOT_IDS,
@@ -121,6 +122,15 @@ const narrativeMutationInputSchema = z.discriminatedUnion('type', [
   z.object({ operationId: boundedIdSchema, type: z.literal('set_node_attrs'), nodeId: boundedIdSchema, attrs: jsonRecordInputSchema }).strict(),
   z.object({ operationId: boundedIdSchema, type: z.literal('move_node'), nodeId: boundedIdSchema, targetParentId: boundedIdSchema, index: z.number().int().nonnegative() }).strict(),
   z.object({ operationId: boundedIdSchema, type: z.literal('insert_node'), parentId: boundedIdSchema, index: z.number().int().nonnegative(), node: jsonInputSchema }).strict(),
+  z.object({
+    operationId: boundedIdSchema,
+    type: z.literal('set_text_marks'),
+    nodeId: boundedIdSchema,
+    from: z.number().int().nonnegative(),
+    to: z.number().int().nonnegative(),
+    marks: z.array(z.object({ type: boundedIdSchema, attrs: jsonRecordInputSchema.optional() }).strict()).max(MAX_EDITOR_OPERATION_MARKS),
+    mode: z.enum(['add', 'remove', 'replace']).optional(),
+  }).strict(),
 ])
 const zineBase = { operationId: boundedIdSchema, spreadId: boundedIdSchema }
 const zineSlotBaseInputShape = {
@@ -289,6 +299,9 @@ function createRuntimeTools(
         break
       case 'insert_node':
         payload = input.node
+        break
+      case 'set_text_marks':
+        payload = input.marks
         break
       case 'insert_slot':
         payload = input.slot

@@ -10,6 +10,7 @@ export const MAX_EDITOR_OPERATION_ID_LENGTH = 256
 export const MAX_EDITOR_OPERATION_REPLACEMENT_LENGTH = 100_000
 export const MAX_EDITOR_OPERATION_JSON_LENGTH = 250_000
 export const MAX_EDITOR_TEMPLATE_TARGET_SLOT_IDS = 500
+export const MAX_EDITOR_OPERATION_MARKS = 16
 
 export interface ReplaceTextOperation {
   type: 'replace_text'
@@ -68,9 +69,19 @@ export function isReplaceTextOperation(
   return operation.type === 'replace_text'
 }
 
+/** 文内行内格式（mark）的目标形态：type 为编辑器 mark 名，attrs 为该 mark 的属性。 */
+export interface NarrativeTextMark {
+  type: string
+  attrs?: Record<string, JsonValue>
+}
+
+/** set_text_marks 的合并模式：add 覆盖同类型 mark（默认）、remove 移除、replace 整体替换。 */
+export type NarrativeTextMarkMode = 'add' | 'remove' | 'replace'
+
 export type NarrativeEditorOperation =
   | { operationId: string; type: 'replace_text'; nodeId: string; from: number; to: number; replacement: string }
   | { operationId: string; type: 'set_node_attrs'; nodeId: string; attrs: Record<string, JsonValue> }
+  | { operationId: string; type: 'set_text_marks'; nodeId: string; from: number; to: number; marks: NarrativeTextMark[]; mode?: NarrativeTextMarkMode }
   | { operationId: string; type: 'move_node'; nodeId: string; targetParentId: string; index: number }
   | { operationId: string; type: 'insert_node'; parentId: string; index: number; node: JsonValue }
   | { operationId: string; type: 'delete_node'; nodeId: string }
@@ -216,6 +227,19 @@ export const narrativeEditorOperationSchema = z.discriminatedUnion('type', [
     }
   }),
   z.object({ ...operationIdShape, type: z.literal('set_node_attrs'), nodeId: idSchema, attrs: boundedJsonRecordSchema }).strict(),
+  z.object({
+    ...operationIdShape,
+    type: z.literal('set_text_marks'),
+    nodeId: idSchema,
+    from: indexSchema,
+    to: indexSchema,
+    marks: z.array(z.object({ type: idSchema, attrs: boundedJsonRecordSchema.optional() }).strict()).max(MAX_EDITOR_OPERATION_MARKS),
+    mode: z.enum(['add', 'remove', 'replace']).optional(),
+  }).strict().superRefine((operation, context) => {
+    if (operation.to <= operation.from) {
+      context.addIssue({ code: 'custom', path: ['to'], message: 'set_text_marks requires to to be greater than from' })
+    }
+  }),
   z.object({ ...operationIdShape, type: z.literal('move_node'), nodeId: idSchema, targetParentId: idSchema, index: indexSchema }).strict(),
   z.object({ ...operationIdShape, type: z.literal('insert_node'), parentId: idSchema, index: indexSchema, node: boundedJsonValueSchema }).strict(),
   z.object({ ...operationIdShape, type: z.literal('delete_node'), nodeId: idSchema }).strict(),
