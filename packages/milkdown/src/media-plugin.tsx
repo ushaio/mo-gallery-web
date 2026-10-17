@@ -97,6 +97,23 @@ export function createMediaView(getOptions: () => MediaViewOptions, refreshers: 
       view.focus()
     }
 
+    /**
+     * 改宽度（拖动角柄松手 / 键盘调整时调一次，null 表示还原原始尺寸）。
+     *
+     * 与 setAlign 同一条路：**直接落到文档上**，于是可撤销、也会触发自动保存。
+     * 拖动过程中的连续变化由 MediaCard 就地改 DOM，这里只收「一次拖完的那个值」——
+     * 每个 pointermove 都 dispatch 会在撤销栈里留下几十条记录、也会让自动保存连发。
+     */
+    const setWidth = (width: number | null) => {
+      const pos = getPos()
+      if (pos === undefined || !view.editable) return
+      const media: MediaCardData = { ...normalizeMedia(node.attrs.media) }
+      if (width && Number.isFinite(width) && width > 0) media.width = Math.round(width)
+      else delete media.width
+      view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { media }))
+      view.focus()
+    }
+
     const render = () => {
       const options = getOptions()
       const media = normalizeMedia(node.attrs.media)
@@ -113,6 +130,8 @@ export function createMediaView(getOptions: () => MediaViewOptions, refreshers: 
         onRemove={view.editable ? remove : undefined}
         // 对齐入口只在编辑器里出现：预览 / 发布侧 onAlignChange 不传，工具栏那一格直接不渲染
         onAlignChange={view.editable ? setAlign : undefined}
+        // 缩放手柄同理：预览 / 发布侧不传 onWidthChange，四个角柄一点痕迹都不留
+        onWidthChange={view.editable ? setWidth : undefined}
       />)
     }
     refreshers.add(render)
@@ -146,6 +165,18 @@ export function createMediaView(getOptions: () => MediaViewOptions, refreshers: 
     }
     dom.addEventListener('dragstart', (event) => {
       if (!view.editable || !event.dataTransfer) return
+      /**
+       * 正在拖角柄缩放：把这次拖拽整个掐掉。
+       *
+       * dragstart 打在 NodeView 外层（它带 draggable="true"），**不是**手柄按钮上 ——
+       * 手柄自己写的 onDragStart / draggable={false} 都收不到也拦不住，只有这里能拦。
+       * 不拦的话，按住角柄一移动就会被浏览器认成「拖走这张卡」，缩放变成搬运。
+       * 标记由 media-resize.tsx 在 pointerdown 时写上、松手时清掉。
+       */
+      if (dom.querySelector('[data-media-resizing]')) {
+        event.preventDefault()
+        return
+      }
       const tile = tileUnderPointer(dom, event)
       if (!tile) return
       const pos = getPos()

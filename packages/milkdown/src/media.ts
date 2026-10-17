@@ -360,6 +360,13 @@ export function decorateMilkdownMediaForWechat(root: HTMLElement) {
       const image = figure.querySelector<HTMLElement>('img')
       if (image) appendInlineStyle(image, align === 'right' ? 'margin-left:auto;margin-right:0' : 'margin-left:0;margin-right:auto')
     }
+    // 拖角柄拖出来的宽度（`::media{width=…}`）：figure 上的 px 宽度是内联的，能带过去；
+    // 但「图片铺满这张卡」平时靠 class 规则给（.milkdown-media[data-media-width] > .milkdown-media-photo img），
+    // 公众号一侧 class 全被抹掉 —— 不在这里补一道内联宽度，收窄的卡片里那张图仍按原图尺寸撑出去。
+    if (figure.getAttribute('data-media-kind') === 'image' && figure.getAttribute('data-media-width') !== null) {
+      const image = figure.querySelector<HTMLElement>('img')
+      if (image) appendInlineStyle(image, 'width:100%;max-width:100%;height:auto')
+    }
     if (figure.getAttribute('data-media-kind') !== 'gallery') return
     // 拼图：figure 的直接子 div 是网格容器（覆盖操作层只在编辑器里渲染，复制侧没有）
     const grid = figure.querySelector<HTMLElement>(':scope > div')

@@ -78,6 +78,15 @@ figure.milkdown-media-image:has(.milkdown-media-photo img),
 figure.milkdown-media-upload:not(.milkdown-media-placeholder):has(.milkdown-media-photo img) { width: fit-content; }
 figure.milkdown-media-image:has(.milkdown-media-photo img) > .milkdown-media-photo,
 figure.milkdown-media-upload:not(.milkdown-media-placeholder):has(.milkdown-media-photo img) > .milkdown-media-photo { width: fit-content; }
+/* 显式宽度（编辑器里拖角柄拖出来的 `::media{width=…}`）：图片与它的容器必须跟着卡片宽度走。
+   上面那两条 fit-content 让卡片贴着图片的原始尺寸，一旦卡片被拖窄，若这两层还维持 fit-content，
+   图片仍按原尺寸排、被卡片的 overflow 裁掉两侧 —— 看起来是「裁切」而不是「缩放」。
+   只认 data-media-width 标记（编辑器写入宽度时一并打上），没拖过的卡片排版一字不变。
+   放在 content.css 而不是 style.css：预览 / 发布侧（MilkdownContent）同样要按这个宽度等比缩图。 */
+.milkdown-media[data-media-width] > .milkdown-media-photo { width: 100%; }
+.milkdown-media[data-media-width] > .milkdown-media-photo img { width: 100%; }
+/* 图注也跟着卡片宽度换行（卡片窄时 16px 的内边距会挤掉半行字） */
+.milkdown-media[data-media-width] > figcaption { padding-inline: 10px; }
 /* 单图卡自己的横向对齐（`::media{align="left|right"}`；指令里没写就是没写过）。
    ⚠️ 这几条只对**只读渲染**（MilkdownContent）生效：那边的 figure 直接躺在满栏的父块里。
    编辑器里 figure 外面还套了一层 .milkdown-media-node，且那层已经收成 fit-content

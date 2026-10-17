@@ -5,6 +5,7 @@ import type { FocusEvent } from 'react'
 import { AlignCenter, AlignLeft, AlignRight, ExternalLink, File, ImageOff, ImagePlus, Link, LoaderCircle, Music2, Pencil, Trash2, Video } from 'lucide-react'
 import { mediaProviderLabel } from './media-embed'
 import { MEDIA_ALIGNS, mediaAlign, normalizeMedia, normalizeMediaAlign, safeMediaUrl } from './media'
+import { MediaResizeLayer } from './media-resize'
 import { galleryGridStyle, galleryTileStyle } from './gallery-layout'
 import type { MediaAlign, MediaCardData, MediaImage, MediaUrlResolver } from './media'
 
@@ -34,6 +35,13 @@ interface MediaCardProps {
    */
   onAlignChange?: (align: MediaAlign) => void
   /**
+   * 改这张单图卡的显示宽度（只在编辑器里传）。传了就多出**四个拖拽角柄**
+   * （见 media-resize.tsx）：拖动按内容栏宽的比例缩放，过程中只改 DOM、
+   * 松手才调一次这里把钱落到文档上；双击角柄传 null 还原成原始尺寸。
+   * 预览与发布侧不传 —— 读者那一侧一个手柄都不该出现。
+   */
+  onWidthChange?: (width: number | null) => void
+  /**
    * 拼图里的每一格是否单独可拖（编辑器传 true）：拖出去即「把这一格拿出来」——
    * 拖到别的图片 / 拼图上并进去、拖到同一张拼图里调序、拖到正文里还原成独立图片卡
    * （落点语义见 media-merge.ts）。预览与发布侧不传：读者那一侧一格都不该能拖。
@@ -56,7 +64,7 @@ function uploadStatusLabel(status: MediaCardData['status'], zh: boolean): string
   return zh ? '待上传' : 'Pending'
 }
 
-export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, showUploadStatus = true, language = 'zh', onEdit, onRemove, onPhotoClick, onAlignChange, draggableTiles = false }: MediaCardProps) {
+export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, showUploadStatus = true, language = 'zh', onEdit, onRemove, onPhotoClick, onAlignChange, onWidthChange, draggableTiles = false }: MediaCardProps) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
   /** 对齐三选一是否已摊开（见 alignControl）。卡片被选中才显示，收起是常态。 */
   const [alignOpen, setAlignOpen] = useState(false)
@@ -172,11 +180,18 @@ export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, show
   const uploadPreviewUrl = media.kind === 'upload' ? uploadPreview(media.uploadId) : undefined
   // 没有本地预览的占位卡（只有编辑器里会出现）：留虚线框表示「这里将来是一张图」
   const placeholder = media.kind === 'upload' && showUploadStatus && !uploadPreviewUrl
+  /**
+   * 缩放手柄的渲染条件：编辑器传了 onWidthChange、且这张卡确实渲染出一张图。
+   * 占位卡（虚线框）、拿不到图的中性缺图位都不给手柄 —— 没有可缩的对象。
+   */
+  const resizeLayer = onWidthChange && media.kind === 'image' && src
+    ? <MediaResizeLayer onWidthChange={onWidthChange} language={language} />
+    : null
 
   return (
     /* 摊开的那排选择排在 <figure> **之前**：它浮在卡片上方，DOM 顺序跟着视觉走。
        收起时（默认）这里就是空，只读渲染下输出与从前一字不差。 */
-    <>{alignPanel}<figure className={`milkdown-media milkdown-media-${media.kind}${placeholder ? ' milkdown-media-placeholder' : ''}`} data-media-kind={media.kind} data-media-align={mediaAlign(media)} data-provider={embed?.provider} style={media.width ? { width: media.width } : undefined}>
+    <>{alignPanel}<figure className={`milkdown-media milkdown-media-${media.kind}${placeholder ? ' milkdown-media-placeholder' : ''}`} data-media-kind={media.kind} data-media-align={mediaAlign(media)} data-media-width={media.width ? '' : undefined} data-provider={embed?.provider} style={media.width ? { width: media.width } : undefined}>
       {isPlayer && <div className="milkdown-media-header">
         <span className="milkdown-media-icon"><Icon size={18} /></span>
         <div className="milkdown-media-info"><strong>{title}</strong>{source && <small>{source}</small>}</div>
@@ -234,6 +249,8 @@ export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, show
         </div>
       ))}
       {media.caption && <figcaption>{media.caption}</figcaption>}
+      {/* 角柄垫在图注之后：绝对定位，不参与布局；只有编辑器传了 onWidthChange 才有这四颗 */}
+      {resizeLayer}
     </figure></>
   )
 }

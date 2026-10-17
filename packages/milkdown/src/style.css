@@ -216,6 +216,25 @@
    拖格：整段拖拽都藏（dragstart 挂上）；拖整卡：只在指针真在可并的卡上时藏（由 media-merge.ts 的
    dragover 按落点切换）。指示线由插件写成内联 display，所以这里用 visibility 压（不写 !important）。 */
 .milkdown-editor.is-media-dragging .milkdown-drop-indicator { visibility: hidden; }
+/* 图片卡的拖拽缩放手柄：四角各一颗（DOM 只在编辑器里渲染，见 media-resize.tsx）。
+   画在卡片**内侧** 6px 处 —— 卡片本体是 overflow: hidden（图片圆角靠它裁），往外画半颗会被裁掉。
+   显隐跟着卡片操作簇同一套口径（悬浮 / 选中 / 焦点在卡内）走：平时看不见，但仍留在 DOM 里，
+   键盘 Tab 能进（所以不能写 display: none）。touch-action: none 把触屏上的拖动从页面滚动手里拿回来。 */
+.milkdown-editor .milkdown-media-resize { position: absolute; z-index: 3; width: 12px; height: 12px; padding: 0; border: 1px solid var(--card, #fff); border-radius: 3px; background: var(--primary, #475569); box-shadow: 0 1px 4px #0003; opacity: 0; transition: opacity 120ms ease; touch-action: none; cursor: pointer; }
+/* 左上 / 右下是一条对角线（nwse），右上 / 左下是另一条（nesw）：光标方向要跟拖动效果一致 */
+.milkdown-editor .milkdown-media-resize-nw { top: 6px; left: 6px; cursor: nwse-resize; }
+.milkdown-editor .milkdown-media-resize-ne { top: 6px; right: 6px; cursor: nesw-resize; }
+.milkdown-editor .milkdown-media-resize-sw { bottom: 6px; left: 6px; cursor: nesw-resize; }
+.milkdown-editor .milkdown-media-resize-se { bottom: 6px; right: 6px; cursor: nwse-resize; }
+.milkdown-editor .milkdown-media:hover .milkdown-media-resize,
+.milkdown-editor .milkdown-media:focus-within .milkdown-media-resize,
+.milkdown-editor .ProseMirror-selectednode .milkdown-media-resize { opacity: 1; }
+/* 触屏没有悬浮这回事：手柄常显，否则永远摸不到 */
+@media (hover: none) { .milkdown-editor .milkdown-media-resize { opacity: 1; } }
+.milkdown-editor .milkdown-media-resize:focus-visible { outline: 2px solid var(--primary, #2563eb); outline-offset: 1px; }
+/* 拖动中的百分比读数：压在卡片正中，不接收指针事件（否则会挡住手柄的 pointermove） */
+.milkdown-editor .milkdown-media-resize-badge { position: absolute; top: 50%; left: 50%; z-index: 4; transform: translate(-50%, -50%); padding: 3px 8px; border-radius: 6px; background: #000000b3; color: #fff; font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.4; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .milkdown-editor .milkdown-media-resize { transition: none; } }
 .milkdown-editor-status { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 12px; font-size: 11px; line-height: 1.4; color: var(--muted-foreground, #777); border-top: 1px solid var(--border, #e5e7eb); }
 .milkdown-editor-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--destructive, #b91c1c); background: color-mix(in srgb, var(--destructive, #b91c1c) 7%, transparent); padding: 10px 14px; font-size: 13px; }
 .milkdown-editor-error button { cursor: pointer; border: 0; padding: 2px 5px; background: transparent; color: inherit; }

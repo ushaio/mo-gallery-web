@@ -16,6 +16,8 @@
 ## [Unreleased]
 
 ### feat
+18. 同步共享包镜像 `@mo-gallery/milkdown`：文章 / 叙事编辑器里的图片卡支持拖动四角手柄按比例缩放（松手才写回 `::media{width=…}`，一步撤销；按内容栏宽 5% 吸附，上限取正文栏宽与图片原始像素宽的较小者；拖动中浮出百分比读数，方向键 ±5% / Shift ±10%、Home 还原、双击手柄或 Esc 取消）。图片卡变窄时图片等比缩小而不是被卡片裁掉；只读侧（`MilkdownContent`）也按这个宽度排版，且一个角柄都不渲染。公众号导出顺带补上宽度内联样式（公众号编辑器会抹掉 class，否则收窄的卡片里图片仍按原图尺寸撑出去）（共享实现同步，Desktop 同步获得；对 App 无影响）
+
 17. 同步共享包镜像 `@mo-gallery/tiptap-editor` 与 `@mo-gallery/ai-agent`：叙事（照片叙事 / 长篇文章）AI 直改的宿主补齐 `set_node_attrs` / `insert_node` / `move_node` / `delete_node` 四类结构操作，并新增第 6 类 `set_text_marks`（行内 mark：粗体 / 斜体 / 下划线 / 删除线 / 行内代码 / 链接 / `pastedStyle` 的颜色、背景、字号、字体族），提示词同步补上节点与属性词表 —— 叙事直改从「只会改字」变成能用编辑器全部排版能力。后台叙事编辑器（`src/components/NarrativeTipTapEditor.tsx` 接入的共享核心内部就构造了 direct-edit host 与 agent）随之获得该能力，Web 侧无需额外接线（共享实现同步，Desktop 同步获得；对 App 无影响）
 
 16. 后台右键菜单不再紧贴指针弹出：此前各处的菜单都把指针坐标直接当菜单左上角，指针正好压在第一项上、每次右击都像「黏」在指针旁边；现在统一落在指针右下方（右移 8px、下移 6px）并继续夹取在视口内，偏移量集中在 `src/lib/context-menu.ts` 一处定义、与桌面端同一套数值。涉及后台 AI 对话页的图片菜单与会话菜单、资源库相册菜单、资源库照片菜单（仅前端展示层，对 Desktop / App 无影响）
