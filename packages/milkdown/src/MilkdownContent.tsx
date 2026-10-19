@@ -5,7 +5,7 @@ import remarkDirective from 'remark-directive'
 import remarkGfm from 'remark-gfm'
 import { MediaCard } from './MediaCard'
 import { mediaFromAttributes, normalizeMedia, safeMediaUrl, walkMarkdown } from './media'
-import type { MarkdownTree, MediaUrlResolver } from './media'
+import type { MarkdownTree, MediaLinkPreviewResolver, MediaUrlResolver } from './media'
 import { remarkTextStyles } from './text-style'
 import { remarkBlockStyles } from './block-style'
 import './content.css'
@@ -79,6 +79,14 @@ export interface MilkdownContentProps {
    */
   resolveUploadPreview?: (uploadId: string) => string | undefined
   /**
+   * 补抓链接卡元信息（站点名 / 摘要 / 封面）。
+   *
+   * **默认不注入**：访客打开文章时不该替作者去访问第三方站点（也躲不开 CORS 与
+   * 限流）。老文档里没存下这些字段的卡片就只能显示域名和标题，这是刻意的降级。
+   * 需要补抓的宿主（已登录的站内预览、编辑器侧的只读预览）显式传一个 resolver。
+   */
+  resolveLinkPreview?: MediaLinkPreviewResolver
+  /**
    * 是否显示上传状态浮层（待上传 / 上传中 / 失败）。**预览与发布侧传 false**：
    * 待上传项按正式图片渲染，只读页面上不出现「还没上传」这类内部状态。
    */
@@ -88,7 +96,7 @@ export interface MilkdownContentProps {
 }
 
 /** A read-only Markdown renderer; importing it does not load Crepe or ProseMirror. */
-export function MilkdownContent({ content, className = '', resolveMediaUrl, resolveUploadPreview, showUploadStatus, onPhotoClick, language }: MilkdownContentProps) {
+export function MilkdownContent({ content, className = '', resolveMediaUrl, resolveUploadPreview, resolveLinkPreview, showUploadStatus, onPhotoClick, language }: MilkdownContentProps) {
   return (
     <div className={`milkdown-content ${className}`}>
       <ReactMarkdown remarkPlugins={[remarkGfm, remarkDirective, remarkHardBreaks, remarkMediaCards, remarkTextStyles, remarkBlockStyles]} components={{
@@ -102,6 +110,7 @@ export function MilkdownContent({ content, className = '', resolveMediaUrl, reso
               resolveUrl={resolveMediaUrl}
               // 占位卡与拼图里的待传格都没有 src，靠 uploadId 现取本地预览图（与编辑器渲染同口径）
               resolveUploadPreview={resolveUploadPreview}
+              resolveLinkPreview={resolveLinkPreview}
               showUploadStatus={showUploadStatus}
               onPhotoClick={onPhotoClick}
               language={language}

@@ -100,6 +100,15 @@ export interface MediaCardData {
   /** 单图卡的横向对齐（left / center / right），缺省即居中。仅 kind='image' 有意义。 */
   align?: MediaAlign
   thumbnail?: string
+  /**
+   * 链接卡的「站点名」（取自 og:site_name 或域名）。与 thumbnail 一起构成富链接卡的头部，
+   * 缺失时渲染侧退回 domain —— 老文档、抓取失败都走这条路，不需要额外标记。
+   */
+  siteName?: string
+  /** 链接卡的摘要（og:description / meta description），渲染侧两行截断 */
+  description?: string
+  /** 链接卡的站点图标（favicon 绝对地址），渲染侧 16px 方图 */
+  icon?: string
   uploadId?: string
   /**
    * 占位卡状态（仅 kind='upload' 有意义）：
@@ -111,6 +120,31 @@ export interface MediaCardData {
 }
 
 export type MediaUrlResolver = (src: string, photoId?: string) => string
+
+/**
+ * 一次「网页信息抓取」的结果。字段全部可选：抓不到某一项（没有 og:image、站点没写 description）
+ * 就是没有，渲染侧按缺失降级，不做占位文案。
+ */
+export interface MediaLinkPreview {
+  url: string
+  title?: string
+  description?: string
+  siteName?: string
+  /** og:image 之类的大图，落到卡片的 thumbnail */
+  image?: string
+  /** 站点图标，落到卡片的 icon */
+  icon?: string
+}
+
+/**
+ * 宿主提供的外部网页信息解析器（浏览器受同源策略限制，这类抓取必须由宿主侧代劳）。
+ *
+ * shared 包只定义契约与渲染，**不内置任何抓取实现**：桌面端可以走本地 Go 的
+ * FetchURLMetadata（不受 CORS 限制、也不需要联网鉴权），web 端走自己的
+ * `/api/link-preview`（服务端做 SSRF 防护与缓存）。返回 null 表示「抓不到」，
+ * 调用方保留原有标题、静默降级，不弹错误。
+ */
+export type MediaLinkPreviewResolver = (url: string) => Promise<MediaLinkPreview | null>
 
 export interface MarkdownTree {
   type: string
@@ -138,6 +172,19 @@ function text(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
+/**
+ * 链接卡的元信息文字（站点名 / 摘要）：压平空白再截断。
+ *
+ * 这两项是从别人的网页上抓回来的，长度与换行都不受我们控制 —— 摘要里带一串换行或
+ * 三四百字，卡片就会被撑成一张「文字块」。压平 + 截断在这里做一次，序列化、渲染、
+ * 预览三处就都不必各自再防一遍。
+ */
+function metaText(value: unknown, max: number): string {
+  const flat = text(value).replace(/\s+/g, ' ').trim()
+  if (flat.length <= max) return flat
+  return `${flat.slice(0, max - 1).trimEnd()}…`
+}
+
 export function normalizeMedia(value: unknown): MediaCardData {
   const input = record(value)
   const kind = input.kind === 'upload' || MEDIA_KINDS.includes(input.kind as MediaKind)
@@ -147,8 +194,11 @@ export function normalizeMedia(value: unknown): MediaCardData {
   const parsed = supportsEmbed ? parseMediaEmbed(text(input.src)) : null
   const embed = supportsEmbed ? parsed?.embed ?? normalizeMediaEmbed(input.embed) : undefined
   const width = typeof input.width === 'number' || typeof input.width === 'string' ? Number(input.width) : 0
+  // 链接里认得到播放器时（YouTube / 网易云…）卡片最终是 video/audio，按 link 存下来的
+  // 摘要与站点名就没有落点，故以「最终类型」判定，而不是用户最初选的那个。
+  const resolvedKind = parsed?.kind ?? kind
   return {
-    kind: parsed?.kind ?? kind,
+    kind: resolvedKind,
     src: parsed?.src ?? safeMediaUrl(text(input.src)),
     title: text(input.title) || parsed?.title || '',
     caption: text(input.caption),
@@ -159,6 +209,13 @@ export function normalizeMedia(value: unknown): MediaCardData {
     // —— 缺省居中，同时仍然跟随外层 block-style 的对齐（见 mediaAlign 的注释）。
     ...(kind === 'image' && parseMediaAlign(input.align) ? { align: parseMediaAlign(input.align) } : {}),
     ...(safeMediaUrl(text(input.thumbnail)) ? { thumbnail: safeMediaUrl(text(input.thumbnail)) } : {}),
+    // 链接卡的元信息只在 kind='link' 时有意义：其余类型就算带着也丢掉，免得将来复制粘贴
+    // 一张图片卡时把链接摘要一起带过去（序列化白名单同样只对 link 写这三项）。
+    ...(resolvedKind === 'link' ? {
+      ...(metaText(input.siteName, 80) ? { siteName: metaText(input.siteName, 80) } : {}),
+      ...(metaText(input.description, 400) ? { description: metaText(input.description, 400) } : {}),
+      ...(safeMediaUrl(text(input.icon)) ? { icon: safeMediaUrl(text(input.icon)) } : {}),
+    } : {}),
     ...(Array.isArray(input.images) ? {
       images: input.images.map((entry): MediaImage => {
         const image = record(entry)
@@ -189,7 +246,7 @@ export function normalizeMedia(value: unknown): MediaCardData {
 export function mediaToAttributes(value: MediaCardData): Record<string, string> {
   const media = normalizeMedia(value)
   const attrs: Record<string, string> = { kind: media.kind }
-  for (const key of ['src', 'title', 'caption', 'photoId', 'uploadId', 'status', 'thumbnail'] as const) {
+  for (const key of ['src', 'title', 'caption', 'photoId', 'uploadId', 'status', 'thumbnail', 'siteName', 'description', 'icon'] as const) {
     if (media[key]) attrs[key] = media[key]
   }
   if (media.kind === 'gallery') {

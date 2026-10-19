@@ -18,6 +18,7 @@ import storageSources from './storage-sources'
 import filmRolls from './film-rolls'
 import overview from './overview'
 import photoChanges from './photo-changes-route'
+import linkPreview from './link-preview'
 import { originCheckMiddleware } from './middleware/origin-check'
 
 const route = new Hono()
@@ -54,6 +55,7 @@ route.route('/', friends)
 route.route('/', storage)
 route.route('/', equipment)
 route.route('/', editorAi)
+route.route('/', linkPreview)
 route.route('/', storageSources)
 route.route('/', filmRolls)
 route.route('/', overview)

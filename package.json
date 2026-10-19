@@ -3,7 +3,7 @@
   "version": "0.8.4",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "next build --webpack",
     "build:vercel": "pnpm run prisma:deploy && pnpm run prisma:generate && pnpm run prisma:seed && next build --webpack",
     "build:node": "pnpm run prisma:deploy && pnpm run prisma:generate && next build --webpack",

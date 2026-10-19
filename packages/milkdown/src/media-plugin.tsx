@@ -6,7 +6,7 @@ import type { Node as ProseNode } from '@milkdown/kit/prose/model'
 import { MediaCard } from './MediaCard'
 import { MEDIA_TILE_DRAG_TYPE, galleryEntryKey, mediaFromAttributes, mediaToAttributes, normalizeMedia } from './media'
 import { forgetTileDrag, rememberTileDrag, setMediaDragMarker } from './media-merge'
-import type { MediaAlign, MediaCardData, MediaUrlResolver } from './media'
+import type { MediaAlign, MediaCardData, MediaLinkPreviewResolver, MediaUrlResolver } from './media'
 
 export const mediaDirective = $remark('mo-media-directive', () => remarkDirective)
 
@@ -66,6 +66,8 @@ interface MediaViewOptions {
    * 存进正文会在下次打开时裂图，所以只在渲染时查一次。
    */
   resolveUploadPreview?: (uploadId: string) => string | undefined
+  /** 按 URL 现取网页信息，供尚未存过元信息的老链接卡补齐显示（见 MediaCard 的同名 prop）。 */
+  resolveLinkPreview?: MediaLinkPreviewResolver
   language?: 'zh' | 'en'
   onEdit: (media: MediaCardData, getPos: () => number | undefined) => void
 }
@@ -124,6 +126,7 @@ export function createMediaView(getOptions: () => MediaViewOptions, refreshers: 
         // 占位卡（kind='upload'）与拼图里的待传格都没有 src，靠 uploadId 现取本地预览图。
         // 编辑器要看到上传状态，故不传 showUploadStatus（默认 true）。
         resolveUploadPreview={options.resolveUploadPreview}
+        resolveLinkPreview={options.resolveLinkPreview}
         // 拼图里每一格单独可拖：编辑器里传 true，预览 / 发布侧不传（见 MediaCard）
         draggableTiles={view.editable}
         onEdit={view.editable ? () => options.onEdit(media, getPos) : undefined}

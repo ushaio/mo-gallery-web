@@ -6,6 +6,8 @@ import type { PhotoSiteMetadata } from '@mo-gallery/content-core'
 import { ArticleBody } from '@mo-gallery/public-site'
 
 import { StoryRichContent } from '@/components/StoryRichContent'
+import { useAuth } from '@/contexts/AuthContext'
+import { createLinkPreviewResolver } from '@/lib/api/link-preview'
 import type { EditorType, PhotoDto, TiptapJsonContent } from '@/lib/api/types'
 import { createWebMediaUrlResolver, photoDtoFromSite, toSitePhoto } from '@/lib/public-site'
 
@@ -41,6 +43,19 @@ export function PublicArticleBody({
   onPhotoClick,
 }: PublicArticleBodyProps) {
   const sitePhotos = useMemo(() => photos.map(toSitePhoto), [photos])
+  const { token } = useAuth()
+  /**
+   * 链接卡元信息补抓：**仅登录态注入**。
+   *
+   * `/api/link-preview` 会替调用方去抓任意 URL（带完整 SSRF 校验），匿名开放等于给公网
+   * 一个内网探测代理，所以它要求登录。于是这里的取舍是：作者自己看文章时，老文档里没存
+   * 元信息的链接卡能补齐；匿名访客看到的是文档里存过的那部分（标题 / 站点名 / 摘要 /
+   * 封面，凡是保存时抓到的都在），一个第三方请求都不会发。
+   */
+  const resolveLinkPreview = useMemo(
+    () => (token ? createLinkPreviewResolver(token) : undefined),
+    [token],
+  )
   const resolver = useMemo(
     () => createWebMediaUrlResolver(cdnDomain == null ? null : { cdn_domain: cdnDomain }),
     [cdnDomain],
@@ -80,6 +95,7 @@ export function PublicArticleBody({
       resolver={resolver}
       photos={sitePhotos}
       className={bodyClassName}
+      resolveLinkPreview={resolveLinkPreview}
       onOpenPhoto={onPhotoClick ? handleOpenPhoto : undefined}
       renderTiptapHtmlFallback={renderTiptapHtmlFallback}
     />

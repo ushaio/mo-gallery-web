@@ -22,7 +22,11 @@ const nextConfig: NextConfig = {
   reactStrictMode: false,
   reactCompiler: true,
   output: "standalone",
-  serverExternalPackages: ["sharp", "@waline/vercel"],
+  // isomorphic-dompurify 在模块顶层（服务端无 window 的分支）就会 new JSDOM()，而
+  // jsdom 的 default-stylesheet.css 是用 fs.readFileSync 按相对路径读的资源；被 webpack
+  // 打进 .next 后该路径失效，SSR 抛 ENOENT .../default-stylesheet.css。外部化后交给
+  // Node 运行时从 node_modules 解析，jsdom 才能读到自己目录下的样式表。
+  serverExternalPackages: ["sharp", "@waline/vercel", "isomorphic-dompurify"],
   // sharp 的平台二进制经 @img/* 动态 require，pnpm 默认 isolated 布局用符号链接暴露，
   // Vercel 打包函数时会丢弃 → 见仓库根 .npmrc（node-linker=hoisted）。
   // 共享包以 TS 源码直出（mo-gallery-shared git 依赖），由 Next 编译

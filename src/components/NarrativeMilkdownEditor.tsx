@@ -9,6 +9,7 @@ import { useLanguage } from '@/contexts/LanguageContext'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { uploadPhoto } from '@/lib/api/photos'
 import type { PhotoDto } from '@/lib/api/types'
+import { createLinkPreviewResolver } from '@/lib/api/link-preview'
 import { createMilkdownAiProvider } from '@/lib/milkdown-ai'
 
 export type NarrativeMilkdownEditorHandle = MilkdownEditorHandle
@@ -42,7 +43,8 @@ const NarrativeMilkdownEditor = forwardRef<MilkdownEditorHandle, NarrativeMilkdo
     return photo.url
   }, [locale, onPhotoUploaded, token])
 
-  return <MilkdownEditor aiProvider={aiProvider} {...props} renderMediaDialogSelect={renderMediaDialogSelect} ref={ref} language={locale} resolveMediaUrl={resolveMediaUrl} onUpload={onUpload} />
+  const resolveLinkPreview = useMemo(() => token ? createLinkPreviewResolver(token) : undefined, [token])
+  return <MilkdownEditor aiProvider={aiProvider} {...props} renderMediaDialogSelect={renderMediaDialogSelect} ref={ref} language={locale} resolveMediaUrl={resolveMediaUrl} resolveLinkPreview={resolveLinkPreview} onUpload={onUpload} />
 })
 
 export default NarrativeMilkdownEditor

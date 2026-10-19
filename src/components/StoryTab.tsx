@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { BookOpen, MessageSquare, ChevronLeft, ChevronRight, Send, LogIn } from 'lucide-react'
 import { useRouter, usePathname } from 'next/navigation'
 import { motion } from 'framer-motion'
@@ -8,6 +8,7 @@ import dynamic from 'next/dynamic'
 import { getPhotoComments, getStoryComments, submitPhotoComment } from '@/lib/api/comments'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { getPhotoStory } from '@/lib/api/stories'
+import { createLinkPreviewResolver } from '@/lib/api/link-preview'
 import type { PhotoDto, PublicCommentDto, StoryDto } from '@/lib/api/types'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
@@ -52,6 +53,15 @@ export function StoryTab({
   const { user, token } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
+  /**
+   * 登录态下给链接卡补抓网页信息（站点名 / 摘要 / 封面）。
+   * `/api/link-preview` 必须带 token —— 它对任意 URL 发起服务端抓取，等于一个内网探测
+   * 代理，不做匿名开放。未登录时传 undefined，卡片按文档里存过的字段渲染。
+   */
+  const resolveLinkPreview = useMemo(
+    () => (token ? createLinkPreviewResolver(token) : undefined),
+    [token],
+  )
 
   const hasCachedData = cachedStory !== undefined
   const [internalStory, setInternalStory] = useState<StoryDto | null>(null)
@@ -364,6 +374,7 @@ export function StoryTab({
             photos={story.photos || []}
             cdnDomain={settings?.cdn_domain}
             className="story-rich-content--compact"
+            resolveLinkPreview={resolveLinkPreview}
           />
         </div>
       )}

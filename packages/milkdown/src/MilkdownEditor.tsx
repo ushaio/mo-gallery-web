@@ -21,7 +21,7 @@ import { blockStyleSchema } from './block-style-plugin'
 import { MediaDialog } from './MediaDialog'
 import { buildMediaMarkdown, normalizeMedia, safeMediaUrl } from './media'
 import { parseMediaEmbed } from './media-embed'
-import type { MediaCardData, MediaUrlResolver } from './media'
+import type { MediaCardData, MediaLinkPreviewResolver, MediaUrlResolver } from './media'
 import type { MediaDialogSelectRenderer } from './media-dialog-select'
 import './style.css'
 
@@ -64,6 +64,14 @@ export interface MilkdownEditorProps {
    * 宿主应在待传项集合变化时通过 `refreshUploadPreviews()` 主动通知重渲染。
    */
   resolveUploadPreview?: (uploadId: string) => string | undefined
+  /**
+   * 按 URL 现取网页信息（标题 / 摘要 / 站点名 / 封面 / 图标）。
+   *
+   * 宿主注入后：插入链接时对话框会自动抓取并**写进文档**；已存过元信息的卡片不再请求，
+   * 老卡片（只有一条 URL）则在渲染时补抓一次、只补显示不回写。不注入就完全保持
+   * 从前的纯文本链接卡 —— 公开阅读页正是这样用的，读者打开文章不会替我们访问别人的站。
+   */
+  resolveLinkPreview?: MediaLinkPreviewResolver
   toolbarAction?: { label: string; onClick: () => void }
   statusBar?: { materialCount?: number; trailing?: ReactNode }
   aiProvider?: AIProvider
@@ -172,6 +180,7 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
         language: options.current.language,
         resolveUrl: options.current.resolveMediaUrl,
         resolveUploadPreview: options.current.resolveUploadPreview,
+        resolveLinkPreview: options.current.resolveLinkPreview,
         onEdit: (media, getPos) => {
           if (alive.current) setMediaRequest({ initial: media, getPos, bookmark: crepe.editor.ctx.get(editorViewCtx).state.selection.getBookmark() })
         },
@@ -302,7 +311,7 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
     <div className="milkdown-editor-scroll"><Milkdown /></div>
     {colorRequest && <ColorPalette field={colorRequest.field} view={colorRequest.view} language={props.language ?? 'zh'} anchor={colorRequest.anchor} onClose={() => { setColorRequest(null); colorRequest.view.focus() }} />}
     <div className="milkdown-editor-status"><span>{loading ? (zh ? '正在加载编辑器…' : 'Loading editor…') : `${characters} ${zh ? '字' : 'characters'}`}{props.statusBar?.materialCount !== undefined && ` · ${props.statusBar.materialCount} ${zh ? '张素材' : 'photos'}`}</span><span>{props.statusBar?.trailing}</span></div>
-    {mediaRequest && <MediaDialog initial={mediaRequest.initial} language={props.language ?? 'zh'} resolveUploadPreview={props.resolveUploadPreview} resolveMediaUrl={props.resolveMediaUrl} renderSelect={props.renderMediaDialogSelect} onClose={closeMedia} onSubmit={(media) => {
+    {mediaRequest && <MediaDialog initial={mediaRequest.initial} language={props.language ?? 'zh'} resolveUploadPreview={props.resolveUploadPreview} resolveLinkPreview={props.resolveLinkPreview} resolveMediaUrl={props.resolveMediaUrl} renderSelect={props.renderMediaDialogSelect} onClose={closeMedia} onSubmit={(media) => {
       const editor = get()
       if (editor?.status !== EditorStatus.Created) return
       const view = editor.ctx.get(editorViewCtx)

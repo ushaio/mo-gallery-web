@@ -128,6 +128,57 @@ figure.milkdown-media.milkdown-media-image[data-media-align="right"] { margin-le
 .milkdown-media-resource-link:hover { background: var(--muted, #f3f4f6); }
 .milkdown-media-resource-arrow { color: var(--muted-foreground, #777); }
 .milkdown-media .milkdown-media-thumbnail { display: block; flex: 0 0 64px; width: 64px; height: 64px; margin: 0; border-radius: 6px; object-fit: cover; }
+
+/* 富链接卡：左文字（站点名 + 标题 + 摘要 + 域名）/ 右 og:image 封面。
+   与 file 保留的 .milkdown-media-resource（图标 + 一行标题）刻意分成两套：
+   网页有标题有摘要，文件只有个名字，硬套同一版式会让两种卡都难看。 */
+.milkdown-media-link { display: flex; align-items: stretch; gap: 4px; min-width: 0; padding-right: 12px; }
+.milkdown-media-link-anchor { display: flex; flex: 1; min-width: 0; align-items: center; gap: 14px; padding: 16px; text-decoration: none; color: inherit; transition: background 120ms ease; }
+.milkdown-media-link-anchor:hover { background: var(--muted, #f3f4f6); }
+.milkdown-media-link-body { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 6px; }
+.milkdown-media-link-site { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted-foreground, #777); }
+/* 站点名前的 favicon：宿主正文排版常给 `img` 一刀切（Web 的 `.story-rich-content img`
+   是 (0,1,1)，还带 `margin: 0 .75rem .75rem 0` 与 `height: auto`），单类名压不过，
+   小图标会被推歪、高度被拉走。这里升到两段类名。 */
+.milkdown-media .milkdown-media-link-favicon { display: block; flex: 0 0 16px; width: 16px; height: 16px; margin: 0; border-radius: 4px; object-fit: contain; }
+.milkdown-media-link-host { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.milkdown-media-link-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; font-size: 15px; font-weight: 600; line-height: 1.5; color: var(--foreground, #262626); }
+.milkdown-media-link-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; font-size: 12.5px; line-height: 1.6; color: var(--muted-foreground, #777); }
+.milkdown-media-link-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 1.5; color: var(--muted-foreground, #999); }
+/* 封面固定比例：抓来的 og:image 尺寸五花八门，交给 object-fit 统一裁切，
+   否则同一篇文章里的几张链接卡高度会各不相同。窄屏直接收掉，把空间让给标题。 */
+.milkdown-media-link-cover { flex: 0 0 132px; width: 132px; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 6px; background: var(--muted, #f3f4f6); }
+.milkdown-media-link-cover img { display: block; width: 100%; height: 100%; margin: 0; object-fit: cover; }
+.milkdown-media-link-arrow { flex: 0 0 auto; align-self: flex-start; margin-top: 2px; color: var(--muted-foreground, #999); }
+@media (max-width: 560px) { .milkdown-media-link-cover { display: none; } }
+/* 卡片里的锚点不是正文链接：编辑器主题的 `.milkdown .ProseMirror a`（特异性 0,2,1）
+   与只读侧的 `.milkdown-content a`（0,1,1）都会把锚点染成主色并加下划线，压过上面
+   那两条单类名规则（0,1,0），于是整张卡的每一行文字都带上链接的下划线 —— 卡片看起来
+   像一坨被划掉的文字。这里用更长的选择器链把它们压回去，链接仍可点、仍可悬停高亮。 */
+.milkdown .ProseMirror .milkdown-media-link-anchor,
+.milkdown .ProseMirror .milkdown-media-resource-link,
+.milkdown-content .milkdown-media-link-anchor,
+.milkdown-content .milkdown-media-resource-link { color: inherit; text-decoration: none; }
+/* 悬停态要单独再压一条：宿主的 `a:hover` 规则往往是 (0,2,1)（Web 的
+   `.story-rich-content a:hover`、Tailwind 的 `hover:prose-a:*`），比上一条 (0,2,0) 高，
+   不补的话鼠标一移上去，整张卡又冒出下划线并染成主色 —— 卡片自身的悬停高亮由
+   `.milkdown-media-link-anchor:hover` 的背景色负责，链接仍然可点。 */
+.milkdown .ProseMirror .milkdown-media-link-anchor:hover,
+.milkdown .ProseMirror .milkdown-media-resource-link:hover,
+.milkdown-content .milkdown-media-link-anchor:hover,
+.milkdown-content .milkdown-media-resource-link:hover,
+.milkdown-content .milkdown-media-link-anchor:focus-visible,
+.milkdown-content .milkdown-media-resource-link:focus-visible { color: inherit; text-decoration: none; }
+
+/* 对话框里的「网页信息」区：只做只读回显 + 一个重抓按钮。抓取结果能改的地方是它上面
+   那几个输入框（标题、说明），这里再放一份可编辑副本只会让两边打架。 */
+.milkdown-media-link-meta { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--border, #e5e7eb); border-radius: 8px; background: var(--muted, #f9fafb); }
+.milkdown-media-link-meta-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 600; color: var(--muted-foreground, #6b7280); }
+.milkdown-media-link-meta-head button { padding: 2px 8px; border: 1px solid var(--border, #e5e7eb); border-radius: 6px; background: transparent; font-size: 12px; font-weight: 500; color: inherit; cursor: pointer; }
+.milkdown-media-link-meta-head button:disabled { opacity: .5; cursor: default; }
+.milkdown-media-link-meta-preview { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.milkdown-media-link-meta-cover { width: 56px; height: 40px; border-radius: 4px; object-fit: cover; }
+.milkdown-media-link-meta-site { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted-foreground, #6b7280); }
 /* 文字占位（无本地预览时）：**必须限定为卡片本体的直接子元素**。
    卡片本体的类名是 .milkdown-media.milkdown-media-upload，裸写 .milkdown-media-upload
    会连卡片本体一起命中，给整张卡套上 padding:32px + flex ⇒ 占位卡比正式图片卡窄 64px、

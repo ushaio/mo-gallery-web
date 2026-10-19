@@ -4,6 +4,7 @@ import { memo, useCallback, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { MilkdownContent } from '@mo-gallery/milkdown/content'
+import type { MediaLinkPreviewResolver } from '@mo-gallery/milkdown/media'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { sanitizeLegacyHtml } from '@/lib/sanitize-legacy-html'
 import { resolveStoredMediaEmbedInfo } from '@mo-gallery/tiptap-editor/media-embed'
@@ -23,6 +24,11 @@ interface StoryRichContentProps {
   cdnDomain?: string
   className?: string
   onPhotoClick?: (photo: PhotoDto) => void
+  /**
+   * 链接卡元信息补抓（可选）。访客侧不传：读者打开文章不该替作者去访问第三方站点。
+   * 已登录的浏览/预览场景传一个，让老文档里没存元信息的链接卡也能显示摘要与封面。
+   */
+  resolveLinkPreview?: MediaLinkPreviewResolver
 }
 
 const HTML_TAG_PATTERN = /<\/?[a-z][\s\S]*>/i
@@ -302,6 +308,7 @@ export const StoryRichContent = memo(function StoryRichContent({
   cdnDomain,
   className = '',
   onPhotoClick,
+  resolveLinkPreview,
 }: StoryRichContentProps) {
   const photoIndex = useMemo(
     () => buildStoryPhotoIndex(photos, cdnDomain),
@@ -347,6 +354,7 @@ export const StoryRichContent = memo(function StoryRichContent({
   if (editorType === 'milkdown') {
     return <MilkdownContent content={milkContent ?? ''} className={rootClassName}
       resolveMediaUrl={(src, photoId) => resolveAssetUrl(photoIndex.findById(photoId)?.url || src, cdnDomain)}
+      resolveLinkPreview={resolveLinkPreview}
       onPhotoClick={onPhotoClick ? (photoId) => { const photo = photoIndex.findById(photoId); if (photo) onPhotoClick(photo) } : undefined}
     />
   }

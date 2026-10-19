@@ -8,7 +8,7 @@ import { galleryGridShape, galleryGridStyle, galleryTileStyle } from './gallery-
 import { MediaCard } from './MediaCard'
 import type { MediaDialogSelectProps, MediaDialogSelectRenderer } from './media-dialog-select'
 import { mediaProviderLabel, parseMediaEmbed } from './media-embed'
-import type { GalleryLayout, MediaCardData, MediaImage, MediaKind, MediaUrlResolver } from './media'
+import type { GalleryLayout, MediaCardData, MediaImage, MediaKind, MediaLinkPreviewResolver, MediaUrlResolver } from './media'
 
 export const mediaLabels = {
   zh: { image: '图片卡片', gallery: '图片画廊', video: '视频卡片', audio: '音频卡片', link: '链接卡片', file: '文件卡片' },
@@ -36,12 +36,18 @@ interface MediaDialogProps {
   language: 'zh' | 'en'
   resolveUploadPreview?: (uploadId: string) => string | undefined
   resolveMediaUrl?: MediaUrlResolver
+  /**
+   * 按 URL 抓取网页信息。传了之后，链接类型会在**填完地址稍等片刻**自动填充
+   * 标题 / 摘要 / 站点名 / 封面 / 图标，也可以点「重新获取」手动再抓一次。
+   * 抓不到不报错：保留用户已填内容，只在按钮旁留一句「未能获取网页信息」。
+   */
+  resolveLinkPreview?: MediaLinkPreviewResolver
   renderSelect?: MediaDialogSelectRenderer
   onSubmit: (media: MediaCardData) => void
   onClose: () => void
 }
 
-export function MediaDialog({ initial, language, resolveUploadPreview, resolveMediaUrl, renderSelect, onSubmit, onClose }: MediaDialogProps) {
+export function MediaDialog({ initial, language, resolveUploadPreview, resolveMediaUrl, resolveLinkPreview, renderSelect, onSubmit, onClose }: MediaDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const initialMedia = normalizeMedia(initial)
   const [kind, setKind] = useState<MediaKind>(initialMedia.kind === 'upload' ? 'image' : initialMedia.kind)
@@ -53,10 +59,62 @@ export function MediaDialog({ initial, language, resolveUploadPreview, resolveMe
   const [cropIndex, setCropIndex] = useState<number | null>(null)
   const [title, setTitle] = useState(initialMedia.title ?? '')
   const [caption, setCaption] = useState(initialMedia.caption ?? '')
+  // 链接卡的网页元信息。与 url 一起走状态：抓取结果要能先落在这里供用户过目，
+  // 而不是一抓到就直接写进文档（抓错了还能改，删掉也只需清空这一栏）。
+  const [siteName, setSiteName] = useState(initialMedia.siteName ?? '')
+  const [description, setDescription] = useState(initialMedia.description ?? '')
+  const [thumbnail, setThumbnail] = useState(initialMedia.thumbnail ?? '')
+  const [icon, setIcon] = useState(initialMedia.icon ?? '')
+  const [previewState, setPreviewState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [error, setError] = useState('')
   const zh = language === 'zh'
   const parsed = kind === 'gallery' || kind === 'file' ? null : parseMediaEmbed(url)
   const select = (props: MediaDialogSelectProps) => renderSelect ? renderSelect(props) : <select value={props.value} aria-label={props.ariaLabel} onChange={(event) => props.onChange(event.target.value)}>{props.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+
+  // 抓取是异步的，回调里读 state 会读到派发那次渲染的旧值：用 ref 取「此刻」的地址与标题，
+  // 才能判断结果回来时用户是不是已经换过链接、是不是还该覆盖标题。
+  const urlRef = useRef(url)
+  urlRef.current = url
+  const titleRef = useRef(title)
+  titleRef.current = title
+  const autoTitleRef = useRef(initialMedia.title ?? '')
+  const requestedUrlRef = useRef('')
+
+  const fetchPreview = async (target: string) => {
+    if (!resolveLinkPreview) return
+    setPreviewState('loading')
+    const result = await resolveLinkPreview(target)
+    if (urlRef.current.trim() !== target) return
+    if (!result) {
+      setPreviewState('error')
+      return
+    }
+    setPreviewState('idle')
+    if (result.siteName) setSiteName(result.siteName)
+    if (result.description) setDescription(result.description)
+    if (result.image) setThumbnail(result.image)
+    if (result.icon) setIcon(result.icon)
+    // 标题只在「用户没填」或「填的还是上一次自动抓到的」时覆盖，手写过的标题一律不动。
+    const next = result.title?.trim() ?? ''
+    if (next && (!titleRef.current.trim() || titleRef.current === autoTitleRef.current)) {
+      autoTitleRef.current = next
+      setTitle(next)
+    }
+  }
+
+  /**
+   * 地址填完停顿一下就自动抓一次。700ms 是为了不在用户逐字敲 URL 时把每个前缀都发出去——
+   * 每个前缀都是一次跨站请求，而且几乎必然 404。同一地址只抓一次（requestedUrlRef），
+   * 想重抓用「重新获取」按钮。
+   */
+  useEffect(() => {
+    if (!resolveLinkPreview || kind !== 'link') return
+    const target = url.trim()
+    if (!/^https?:\/\//i.test(target) || target === requestedUrlRef.current) return
+    const timer = setTimeout(() => { requestedUrlRef.current = target; void fetchPreview(target) }, 700)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchPreview 只读 ref 与 setter，不需要参与依赖
+  }, [url, kind, resolveLinkPreview])
 
   /**
    * 表单当前值 → 一张卡片数据。**预览与提交共用这一份**：右侧预览要显示的，就是
@@ -74,7 +132,15 @@ export function MediaDialog({ initial, language, resolveUploadPreview, resolveMe
       layout: galleryLayout,
     } : {
       src: url.trim(),
-      ...(url.trim() === initialMedia.src ? { photoId: initialMedia.photoId, embed: initialMedia.embed, thumbnail: initialMedia.thumbnail } : {}),
+      // 换过链接就说明这是另一张网页，上一页的 photoId / embed 当然作废；
+      // 而 siteName / description / icon / 封面是跟着新地址重新抓的，直接取表单当前值。
+      ...(url.trim() === initialMedia.src ? { photoId: initialMedia.photoId, embed: initialMedia.embed } : {}),
+      ...(thumbnail ? { thumbnail } : {}),
+      ...(kind === 'link' ? {
+        ...(siteName.trim() ? { siteName: siteName.trim() } : {}),
+        ...(description.trim() ? { description: description.trim() } : {}),
+        ...(icon ? { icon } : {}),
+      } : {}),
     }),
   })
 
@@ -90,6 +156,16 @@ export function MediaDialog({ initial, language, resolveUploadPreview, resolveMe
   const updateUrl = (value: string) => {
     setUrl(value)
     setError('')
+    // 地址一改，先前抓到的站点名 / 摘要 / 封面就属于另一张网页了，先清空再由自动抓取重填；
+    // 不清会让「改了链接但卡片还在说旧网页的事」这条最难解释的路径留在界面上。
+    if (value.trim() !== initialMedia.src) {
+      setSiteName('')
+      setDescription('')
+      setThumbnail('')
+      setIcon('')
+      setPreviewState('idle')
+      requestedUrlRef.current = ''
+    }
     const detected = kind === 'file' ? null : parseMediaEmbed(value)
     if (detected) setKind(detected.kind)
   }
@@ -190,6 +266,25 @@ export function MediaDialog({ initial, language, resolveUploadPreview, resolveMe
         </> : <label>{zh ? '媒体链接 / 嵌入代码' : 'Media URL / embed code'}<textarea autoFocus required rows={3} value={url} onChange={(event) => updateUrl(event.target.value)} placeholder="https://…" spellCheck={false} /></label>}
         {kind !== 'gallery' && kind !== 'file' && <p className="milkdown-dialog-hint">{zh ? '支持网易云音乐、Spotify、YouTube、Bilibili、Vimeo，以及网站提供的嵌入代码。' : 'Supports NetEase Music, Spotify, YouTube, Bilibili, Vimeo and website embed codes.'}</p>}
         {parsed && <p className="milkdown-media-detected" role="status"><CheckCircle2 size={14} />{zh ? '已识别' : 'Detected'} · {mediaProviderLabel(parsed.embed.provider, language)}</p>}
+        {kind === 'link' && resolveLinkPreview && <div className="milkdown-media-link-meta">
+          <div className="milkdown-media-link-meta-head">
+            <span>{zh ? '网页信息' : 'Page details'}</span>
+            <button
+              type="button"
+              onClick={() => { const target = url.trim(); requestedUrlRef.current = target; void fetchPreview(target) }}
+              disabled={!/^https?:\/\//i.test(url.trim()) || previewState === 'loading'}
+            >
+              {previewState === 'loading' ? (zh ? '获取中…' : 'Fetching…') : (zh ? '重新获取' : 'Refetch')}
+            </button>
+          </div>
+          {previewState === 'error' && <p className="milkdown-dialog-hint">{zh ? '未能获取网页信息，卡片将只显示链接地址。' : 'Could not fetch page details — the card will show the bare link.'}</p>}
+          {(thumbnail || icon || siteName) && <div className="milkdown-media-link-meta-preview">
+            {thumbnail ? <img className="milkdown-media-link-meta-cover" src={thumbnail} alt="" /> : null}
+            {icon ? <img className="milkdown-media-link-favicon" src={icon} alt="" /> : null}
+            {siteName ? <span className="milkdown-media-link-meta-site">{siteName}</span> : null}
+          </div>}
+          {description && <p className="milkdown-dialog-hint">{description}</p>}
+        </div>}
         <label>{zh ? '标题 / 替代文本' : 'Title / alternative text'}<input value={title} onChange={(event) => setTitle(event.target.value)} /></label>
         <label>{zh ? '说明' : 'Caption'}<textarea rows={2} value={caption} onChange={(event) => setCaption(event.target.value)} /></label>
         {error && <p className="milkdown-editor-error" role="alert">{error}</p>}

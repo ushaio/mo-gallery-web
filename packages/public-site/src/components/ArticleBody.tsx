@@ -4,6 +4,7 @@ import { useMemo, type ReactNode } from 'react'
 
 import type { PhotoSiteMetadata, SiteArticle } from '@mo-gallery/content-core'
 import { MilkdownContent } from '@mo-gallery/milkdown/content'
+import type { MediaLinkPreviewResolver } from '@mo-gallery/milkdown/media'
 import type { MediaUrlResolver } from '../adapters'
 import { TiptapJsonView } from './TiptapJsonView'
 
@@ -36,6 +37,11 @@ export interface ArticleBodyProps {
   resolveInternalHref?: (rawHref: string) => string
   /** tiptap 无 JSON 存量时的宿主兜底渲染；不传则该类正文不渲染。 */
   renderTiptapHtmlFallback?: (content: string) => ReactNode
+  /**
+   * 链接卡元信息补抓（可选）。访客侧不传 —— 读者打开文章不该触发第三方站点请求；
+   * 已登录的站内预览可以传入，让老文档里的链接卡也显示出站点名 / 摘要 / 封面。
+   */
+  resolveLinkPreview?: MediaLinkPreviewResolver
 }
 
 export const ArticleBody = function ArticleBody({
@@ -50,6 +56,7 @@ export const ArticleBody = function ArticleBody({
   onOpenPhoto,
   resolveInternalHref,
   renderTiptapHtmlFallback,
+  resolveLinkPreview,
 }: ArticleBodyProps) {
   const photoById = useMemo(() => {
     const map = new Map<string, PhotoSiteMetadata>()
@@ -76,6 +83,7 @@ export const ArticleBody = function ArticleBody({
               if (matched) onOpenPhoto(matched)
             }
           : undefined}
+        resolveLinkPreview={resolveLinkPreview}
       />
     )
   }

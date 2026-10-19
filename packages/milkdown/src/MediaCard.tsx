@@ -1,13 +1,13 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FocusEvent } from 'react'
 import { AlignCenter, AlignLeft, AlignRight, ExternalLink, File, ImageOff, ImagePlus, Link, LoaderCircle, Music2, Pencil, Trash2, Video } from 'lucide-react'
 import { mediaProviderLabel } from './media-embed'
 import { MEDIA_ALIGNS, mediaAlign, normalizeMedia, normalizeMediaAlign, safeMediaUrl } from './media'
 import { MediaResizeLayer } from './media-resize'
 import { galleryGridStyle, galleryTileStyle } from './gallery-layout'
-import type { MediaAlign, MediaCardData, MediaImage, MediaUrlResolver } from './media'
+import type { MediaAlign, MediaCardData, MediaImage, MediaLinkPreview, MediaLinkPreviewResolver, MediaUrlResolver } from './media'
 
 interface MediaCardProps {
   media: MediaCardData
@@ -47,11 +47,55 @@ interface MediaCardProps {
    * （落点语义见 media-merge.ts）。预览与发布侧不传：读者那一侧一格都不该能拖。
    */
   draggableTiles?: boolean
+  /**
+   * 按 URL 现取网页信息（标题 / 摘要 / 站点名 / 封面 / 图标），用于**富链接卡**。
+   *
+   * 与 `resolveUploadPreview` 同一类「渲染期现取」能力，但语义相反：抓回来的东西
+   * **值得落进文档**（插入时由 MediaDialog 写入），这里查表只是为了补上老文档里
+   * 还没存过元信息的卡片 —— 所以只在文档缺字段时才发请求，且结果只进内存、不回写。
+   */
+  resolveLinkPreview?: MediaLinkPreviewResolver
 }
 
 function sourceLabel(src: string): string {
   try { return new URL(src).hostname.replace(/^www\./, '') }
   catch { return src.split('/').pop()?.split('?')[0] ?? '' }
+}
+
+/** 链接卡底行显示的路径：「host」显得空，带上 pathname 才看得出是哪一页。 */
+function urlLabel(src: string): string {
+  try {
+    const url = new URL(src)
+    const path = decodeURI(url.pathname).replace(/\/$/, '')
+    return `${url.hostname.replace(/^www\./, '')}${path === '' || path === '/' ? '' : path}`
+  } catch { return sourceLabel(src) }
+}
+
+/**
+ * 网页信息查询的**模块级缓存**：同一篇文章里同一个链接出现两次、或滚出视口再滚回来，
+ * 都只该发一次请求。null 也要缓存 —— 抓不到的站（需要登录、禁了爬虫）每次重试都是白等。
+ * 键是**规范化后的绝对 URL**，不同 query 视为不同页面。
+ */
+const linkPreviewCache = new Map<string, MediaLinkPreview | null>()
+const linkPreviewInflight = new Map<string, Promise<MediaLinkPreview | null>>()
+
+function requestLinkPreview(resolver: MediaLinkPreviewResolver, url: string): Promise<MediaLinkPreview | null> {
+  if (linkPreviewCache.has(url)) return Promise.resolve(linkPreviewCache.get(url) ?? null)
+  const pending = linkPreviewInflight.get(url)
+  if (pending) return pending
+  const task = resolver(url)
+    .then((result) => {
+      const value = result && typeof result === 'object' ? result : null
+      linkPreviewCache.set(url, value)
+      return value
+    })
+    .catch(() => {
+      linkPreviewCache.set(url, null)
+      return null
+    })
+    .finally(() => { linkPreviewInflight.delete(url) })
+  linkPreviewInflight.set(url, task)
+  return task
 }
 
 /**
@@ -64,7 +108,7 @@ function uploadStatusLabel(status: MediaCardData['status'], zh: boolean): string
   return zh ? '待上传' : 'Pending'
 }
 
-export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, showUploadStatus = true, language = 'zh', onEdit, onRemove, onPhotoClick, onAlignChange, onWidthChange, draggableTiles = false }: MediaCardProps) {
+export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, resolveLinkPreview, showUploadStatus = true, language = 'zh', onEdit, onRemove, onPhotoClick, onAlignChange, onWidthChange, draggableTiles = false }: MediaCardProps) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
   /** 对齐三选一是否已摊开（见 alignControl）。卡片被选中才显示，收起是常态。 */
   const [alignOpen, setAlignOpen] = useState(false)
@@ -74,6 +118,29 @@ export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, show
   const uploadPreview = (uploadId?: string) => uploadId ? resolveUploadPreview?.(uploadId) : undefined
   const src = resolve(media.src, media.photoId)
   const source = sourceLabel(src)
+  /**
+   * 富链接卡的元信息：**文档里存过的优先，没存过才现抓一次**（抓回来的只留在内存里）。
+   *
+   * 触发条件写成「缺任何一项」，于是老文档第一次打开就会补齐显示；而已经存全的卡片
+   * 一个请求都不发 —— 发布出去的公开页面因此不会因为读者打开文章就去打别人的站点。
+   * 宿主不注入 resolveLinkPreview（或读者侧刻意不注入）时，这里永远不联网。
+   */
+  const [linkPreview, setLinkPreview] = useState<MediaLinkPreview | null>(null)
+  const linkUrl = media.kind === 'link' && !media.embed ? src : ''
+  const needsLinkPreview = Boolean(linkUrl && resolveLinkPreview) && !(media.description && media.siteName && media.thumbnail)
+  useEffect(() => {
+    if (!needsLinkPreview) return
+    let alive = true
+    void requestLinkPreview(resolveLinkPreview!, linkUrl).then((result) => {
+      if (alive && result) setLinkPreview(result)
+    })
+    return () => { alive = false }
+  }, [needsLinkPreview, linkUrl, resolveLinkPreview])
+  const linkSite = media.siteName || linkPreview?.siteName || source
+  const linkDescription = media.description || linkPreview?.description || ''
+  const linkTitle = media.title || linkPreview?.title || source
+  const linkCover = media.thumbnail ? resolve(media.thumbnail) : safeMediaUrl(linkPreview?.image ?? '')
+  const linkIcon = media.icon ? resolve(media.icon) : safeMediaUrl(linkPreview?.icon ?? '')
   const embed = media.embed
   const isPlayer = Boolean(embed) || media.kind === 'video' || media.kind === 'audio'
   const fallbackTitle = media.kind === 'audio' ? (zh ? '音频' : 'Audio') : media.kind === 'video' ? (zh ? '视频' : 'Video') : (zh ? '媒体' : 'Media')
@@ -210,7 +277,27 @@ export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, show
           ? <div className="milkdown-media-audio-player"><audio src={src} controls preload="metadata" aria-label={title} onError={() => setFailedSrc(src)} /></div>
           : <video className="milkdown-media-video-player" src={src} controls playsInline preload="metadata" aria-label={title} onError={() => setFailedSrc(src)} />
       ) : <div className="milkdown-media-empty"><Icon size={24} /><span>{zh ? '暂时无法播放此媒体' : 'This media cannot be played here'}</span>{src && <a href={src} target="_blank" rel="noopener noreferrer">{openLabel}<ExternalLink size={13} /></a>}</div>)}
-      {!isPlayer && (media.kind === 'link' || media.kind === 'file') && <div className="milkdown-media-resource">
+      {/* 富链接卡：左文字右封面。整块是一个 <a>，操作按钮与它同级 —— 按钮在 <a> 里面
+          点击会连带跳转，放在外面就没有这个麻烦。 */}
+      {!isPlayer && media.kind === 'link' && <div className="milkdown-media-link">
+        <a className="milkdown-media-link-anchor" href={src || undefined} target="_blank" rel="noopener noreferrer">
+          <span className="milkdown-media-link-body">
+            <span className="milkdown-media-link-site">
+              {linkIcon
+                ? <img className="milkdown-media-link-favicon" src={linkIcon} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none' }} />
+                : <Link size={13} aria-hidden="true" />}
+              <span className="milkdown-media-link-host">{linkSite}</span>
+            </span>
+            <strong className="milkdown-media-link-title">{linkTitle}</strong>
+            {linkDescription && <span className="milkdown-media-link-desc">{linkDescription}</span>}
+            <span className="milkdown-media-link-url">{src ? urlLabel(src) : (zh ? '链接不可用' : 'Link unavailable')}</span>
+          </span>
+          {linkCover && <span className="milkdown-media-link-cover"><img src={linkCover} alt="" loading="lazy" /></span>}
+          {src && <ExternalLink className="milkdown-media-link-arrow" size={15} />}
+        </a>
+        {actions}
+      </div>}
+      {!isPlayer && media.kind === 'file' && <div className="milkdown-media-resource">
         <a className="milkdown-media-resource-link" href={src || undefined} target="_blank" rel="noopener noreferrer">
           {media.thumbnail ? <img className="milkdown-media-thumbnail" src={resolve(media.thumbnail)} alt="" loading="lazy" /> : <span className="milkdown-media-icon"><Icon size={20} /></span>}
           <span className="milkdown-media-info"><strong>{title}</strong><small>{src || (zh ? '链接不可用' : 'Link unavailable')}</small></span>

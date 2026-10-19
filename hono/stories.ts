@@ -61,6 +61,26 @@ const ReorderPhotosSchema = z.object({
   photoIds: z.array(z.string().uuid()).min(1),
 })
 
+/**
+ * 只保留图库里真实存在的照片 id（顺序不变）。
+ *
+ * 故事与照片是隐式多对多，`connect` / `set` 给一个不存在的 id 时 Prisma 会抛 P2025，
+ * 整次请求变成 500。而这两条写接口的入参都是调用方的**素材库快照**：桌面端发布叙事时
+ * 会把素材库当前选中的全部照片一起发上来（含素材库面板「未使用」栏里没插进正文的
+ * 那些），这份快照可能留着早先已从图库删除的照片，也可能混进不属于本站的照片 id。
+ * 这类 id 直接丢掉比让整次写入失败合理，也是 MO 云同类接口的口径（那边只保留已经是
+ * 关联成员的照片 id）。
+ */
+async function keepExistingPhotoIds(photoIds: string[]): Promise<string[]> {
+  if (photoIds.length === 0) return []
+  const rows = await db.photo.findMany({
+    where: { id: { in: photoIds } },
+    select: { id: true },
+  })
+  const existing = new Set(rows.map((row) => row.id))
+  return photoIds.filter((id) => existing.has(id))
+}
+
 const StoryAiGenerateSchema = z.object({
   action: z.enum(['rewrite', 'expand', 'shorten', 'continue', 'summarize', 'custom']),
   model: z.string().max(200).optional(),
@@ -354,6 +374,9 @@ stories.post('/admin/stories', async (c) => {
     const body = await c.req.json()
     const validated = CreateStorySchema.parse(body)
 
+    // 入参 photoIds 是调用方的素材库快照，可能含已删除 / 不属本站的 id（见 keepExistingPhotoIds）。
+    const photoIds = validated.photoIds ? await keepExistingPhotoIds(validated.photoIds) : null
+
     const story = await db.story.create({
       data: {
         title: validated.title,
@@ -368,9 +391,9 @@ stories.post('/admin/stories', async (c) => {
             : validated.coverCrop === null
               ? Prisma.JsonNull
               : validated.coverCrop,
-        photos: validated.photoIds
+        photos: photoIds
           ? {
-              connect: validated.photoIds.map((id) => ({ id })),
+              connect: photoIds.map((id) => ({ id })),
             }
           : undefined,
       },
@@ -591,13 +614,17 @@ stories.patch('/admin/stories/:id/photos/reorder', async (c) => {
     const body = await c.req.json()
     const validated = ReorderPhotosSchema.parse(body)
 
+    // 入参是调用方的素材库快照，可能含已删除 / 不属本站的 id：先过滤，否则下面的 set 会因
+    // 关联目标不存在抛 P2025，把整次发布变成 500（见 keepExistingPhotoIds）。
+    const photoIds = await keepExistingPhotoIds(validated.photoIds)
+
     // Use set to replace the entire photos relation in one operation
     // Prisma handles the reorder atomically without needing disconnect first
     const story = await db.story.update({
       where: { id },
       data: {
         photos: {
-          set: validated.photoIds.map((photoId) => ({ id: photoId })),
+          set: photoIds.map((photoId) => ({ id: photoId })),
         },
       },
       include: {
