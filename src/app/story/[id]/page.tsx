@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { ArrowLeft, ArrowUp, Calendar, ChevronLeft, ChevronRight, Clock, Image as ImageIcon } from 'lucide-react'
+import { ArrowLeft, ArrowUp, Calendar, ChevronLeft, ChevronRight, Clock, EyeOff, Image as ImageIcon } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -35,7 +35,7 @@ export default function StoryDetailPage() {
   const reduceMotion = useReducedMotion()
   const { locale, t } = useLanguage()
   const { settings } = useSettings()
-  const { isReady, user } = useAuth()
+  const { isReady, token, user } = useAuth()
 
   const [story, setStory] = useState<StoryDto | null>(null)
   const [loading, setLoading] = useState(true)
@@ -63,6 +63,7 @@ export default function StoryDetailPage() {
       backToStories: t('story.back_to_list'),
       backToAllStories: t('story.detail_back_to_all'),
       tag: t('story.detail_tag'),
+      invisible: t('story.detail_invisible'),
       readMinutes: t('story.detail_read_minutes'),
       photographs: t('story.detail_photographs'),
       scroll: t('story.detail_scroll'),
@@ -82,23 +83,34 @@ export default function StoryDetailPage() {
   )
 
   useEffect(() => {
-    async function fetchStory() {
-      if (!params?.id) return
+    // 等待登录状态就绪后再拉取，避免作者先以访客口径拿到 404 再跳成可见。
+    if (!isReady || !params?.id) return
 
+    let cancelled = false
+
+    async function fetchStory(storyId: string) {
       try {
-        const storyData = await getStory(params.id)
+        // 带 token 时服务端允许作者本人读取自己的不可见叙事；访客与普通登录用户仍是 404。
+        const storyData = await getStory(storyId, token)
+        if (cancelled) return
         setStory(storyData)
         setError(null)
       } catch (err) {
+        if (cancelled) return
         console.error('Failed to fetch story:', err)
+        setStory(null)
         setError(t('story.load_failed'))
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
 
-    void fetchStory()
-  }, [params?.id, t])
+    void fetchStory(params.id)
+
+    return () => {
+      cancelled = true
+    }
+  }, [params?.id, isReady, token, t])
 
   useEffect(() => {
     setActivePhotoIndex(0)
@@ -276,12 +288,18 @@ export default function StoryDetailPage() {
               initial={reduceMotion ? false : { opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.1 }}
-              className="mb-6"
+              className="mb-6 flex flex-wrap items-center gap-3"
             >
               <span className="inline-flex items-center gap-2.5 rounded-full bg-white/10 px-5 py-2.5 text-[10px] font-semibold uppercase tracking-[0.3em] text-white/80 backdrop-blur-sm">
                 <span className="size-1.5 rounded-full bg-rose-500" />
                 {detailText.tag}
               </span>
+              {story.isPublished === false ? (
+                <span className="inline-flex items-center gap-2 rounded-full border border-amber-300/40 bg-amber-300/15 px-5 py-2.5 text-[10px] font-semibold uppercase tracking-[0.3em] text-amber-100 backdrop-blur-sm">
+                  <EyeOff className="size-3.5" />
+                  {detailText.invisible}
+                </span>
+              ) : null}
             </motion.div>
 
             <h1 className="max-w-5xl font-serif text-4xl font-medium leading-[1.1] tracking-[-0.02em] text-white sm:text-5xl md:text-6xl lg:text-7xl">

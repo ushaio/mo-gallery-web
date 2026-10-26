@@ -31,6 +31,14 @@ export interface EditorAiPromptPayload {
   /** 图片 URL / data URL 列表（多模态） */
   images?: string[]
   historyMessages?: EditorAiHistoryMessage[]
+  /**
+   * 这一轮模型手上有可调用的工具（读写当前文档、执行命令等）。
+   *
+   * 只影响聊天模式的系统提示词：有工具时要它「该动手就动手」，没工具时它只能聊天。
+   * 由调用方按实际合并后的工具表传入，默认 false —— 拿不准就按「没工具」处理，
+   * 免得模型以为自己做得到，反问用户要权限。
+   */
+  hasTools?: boolean
 }
 
 export interface EditorAiChatTextPart {

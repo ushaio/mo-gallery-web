@@ -5,6 +5,7 @@ import { authMiddleware, AuthVariables } from './middleware/auth'
 import { z } from 'zod'
 import { Prisma } from '@/generated/prisma/client'
 import { resolvePhotoUrls, resolvePhotoUrlsInto } from '~/server/lib/photo-urls'
+import { revalidateAfterWrite, STATIC_PUBLIC_PATHS } from '~/server/lib/revalidate'
 
 const albums = new Hono<{ Variables: AuthVariables }>()
 
@@ -129,6 +130,8 @@ albums.get('/albums/:id', async (c) => {
 
 // Protected admin endpoints
 albums.use('/admin/*', authMiddleware)
+// 相册参与 /sitemap.xml 的条目生成（该文件是构建期静态产物）。
+albums.use('/admin/*', revalidateAfterWrite([STATIC_PUBLIC_PATHS.sitemap]))
 
 // Batch reorder albums - MUST be before :id routes
 albums.patch('/admin/albums/reorder', async (c) => {

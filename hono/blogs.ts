@@ -15,6 +15,8 @@ import {
 } from '~/server/lib/article-content'
 import { db } from '~/server/lib/db'
 import { authMiddleware, AuthVariables } from './middleware/auth'
+import { readOwnerViewer } from '~/server/lib/optional-admin'
+import { revalidateAfterWrite, STATIC_PUBLIC_PATHS } from '~/server/lib/revalidate'
 
 const blogs = new Hono<{ Variables: AuthVariables }>()
 
@@ -63,9 +65,11 @@ blogs.get('/blogs', async (c) => {
 blogs.get('/blogs/:id', async (c) => {
   try {
     const id = c.req.param('id')
+    const ownerViewer = readOwnerViewer(c)
 
     const blog = await db.blog.findUnique({
-      where: { id, isPublished: true },
+      // 作者/所有者登录后可读自己的不可见文章；其余情况按访客口径过滤
+      where: ownerViewer ? { id } : { id, isPublished: true },
       include: ARTICLE_CONTENT_INCLUDE,
     })
 
@@ -106,6 +110,11 @@ blogs.get('/blogs/categories/list', async (c) => {
 
 // Protected admin endpoints
 blogs.use('/admin/*', authMiddleware)
+// 文章写接口：/blog 列表与 /sitemap.xml 同为构建期静态页，落库后需按需刷新。
+blogs.use('/admin/*', revalidateAfterWrite([
+  STATIC_PUBLIC_PATHS.blogs,
+  STATIC_PUBLIC_PATHS.sitemap,
+]))
 
 // Get all blogs (admin)
 blogs.get('/admin/blogs', async (c) => {

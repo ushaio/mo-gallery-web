@@ -5,8 +5,15 @@ export async function getStories(): Promise<StoryDto[]> {
   return apiRequestData<StoryDto[]>('/api/stories')
 }
 
-export async function getStory(id: string): Promise<StoryDto> {
-  return apiRequestData<StoryDto>(`/api/stories/${encodeURIComponent(id)}`)
+/**
+ * 读取叙事详情。
+ *
+ * 不传 token 时按访客口径（不可见叙事返回 404）；传入作者/所有者 token 时，
+ * 服务端会把该身份计入可见性判断，允许作者本人查看自己的不可见叙事。
+ * 该端点对无权限凭证一律降级为访客视角，不会返回 401。
+ */
+export async function getStory(id: string, token?: string | null): Promise<StoryDto> {
+  return apiRequestData<StoryDto>(`/api/stories/${encodeURIComponent(id)}`, {}, token)
 }
 
 export async function getPhotoStory(photoId: string, signal?: AbortSignal): Promise<StoryDto | null> {

@@ -334,3 +334,88 @@
   .milkdown-media-dialog-controls, .milkdown-media-dialog-preview { flex: 0 0 auto; min-height: 0; overflow: visible; }
   .milkdown-media-dialog-preview { order: -1; padding: 18px 24px; border-left: 0; border-bottom: 1px solid var(--border, #ddd); }
 }
+
+/* ---------- AI 润色：左右对照的差异浮窗 ----------
+   注意 display 只在 [open] 上给：作者样式优先于 UA 的 `dialog:not([open]) { display: none }`，
+   直接写 display: flex 会让没打开的 dialog 也露出来。 */
+.milkdown-polish-dialog { width: min(920px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); box-sizing: border-box; margin: auto; padding: 0; overflow: hidden; border: 1px solid var(--border, #ddd); border-radius: 16px; color: var(--foreground, #262626); background: var(--card, #fff); box-shadow: 0 24px 80px #0003; flex-direction: column; }
+.milkdown-polish-dialog[open] { display: flex; }
+.milkdown-polish-dialog::backdrop { background: #0006; backdrop-filter: blur(3px); }
+.milkdown-polish-dialog > header { display: flex; flex: 0 0 auto; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border, #ddd); }
+.milkdown-polish-heading { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.milkdown-polish-heading h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.milkdown-polish-heading > svg { flex: 0 0 auto; color: var(--primary, #475569); }
+.milkdown-polish-meta { display: inline-flex; align-items: center; gap: 6px; color: var(--muted-foreground, #777); font-size: 12px; }
+.milkdown-polish-meta em { font-style: normal; font-variant-numeric: tabular-nums; }
+.milkdown-polish-meta .is-removed { color: #b42318; }
+.milkdown-polish-meta .is-added { color: #067647; }
+.milkdown-polish-close { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; color: var(--muted-foreground, #777); background: transparent; cursor: pointer; }
+.milkdown-polish-close:hover { color: var(--foreground, #262626); background: var(--muted, #f3f4f6); }
+.milkdown-polish-body { display: flex; flex: 1 1 auto; min-height: 0; }
+/* 两栏各滚各的：润色常常只改中间几句，让左右各自停在读到的地方比整窗一起滚好找。 */
+.milkdown-polish-panel { display: flex; flex: 1 1 50%; flex-direction: column; min-width: 0; min-height: 0; }
+.milkdown-polish-panel + .milkdown-polish-panel { border-left: 1px solid var(--border, #ddd); }
+.milkdown-polish-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 10px 20px 0; font-size: 12px; }
+.milkdown-polish-panel-head strong { font-weight: 600; }
+.milkdown-polish-panel-head small { color: var(--muted-foreground, #777); font-variant-numeric: tabular-nums; }
+.milkdown-polish-text { flex: 1 1 auto; min-height: 120px; overflow-y: auto; overscroll-behavior: contain; padding: 8px 20px 18px; font-size: 13.5px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+.milkdown-polish-text--html { white-space: normal; }
+.milkdown-polish-text--html .milkdown-content { color: inherit; font-size: inherit; line-height: inherit; }
+.milkdown-polish-text--html .milkdown-content > :first-child { margin-top: 0; }
+.milkdown-polish-del { color: #912018; text-decoration: line-through; text-decoration-thickness: 1px; background: #fee4e2; border-radius: 3px; }
+.milkdown-polish-ins { color: #054f31; background: #d1fadf; border-radius: 3px; }
+.milkdown-polish-caret { display: inline-block; width: 2px; height: 1em; margin-left: 1px; vertical-align: -2px; background: currentColor; animation: milkdown-polish-blink 1s steps(2, start) infinite; }
+@keyframes milkdown-polish-blink { to { opacity: 0; } }
+.milkdown-polish-empty { color: var(--muted-foreground, #999); }
+.milkdown-polish-dialog > footer { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--border, #ddd); background: var(--card, #fff); }
+.milkdown-polish-hint { margin: 0; color: var(--muted-foreground, #777); font-size: 11.5px; line-height: 1.5; }
+.milkdown-polish-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+.milkdown-polish-actions button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 12px; border: 1px solid transparent; border-radius: 7px; color: inherit; background: var(--muted, #f3f4f6); font: inherit; font-size: 12.5px; cursor: pointer; }
+.milkdown-polish-actions button:hover:not(:disabled) { background: var(--accent, #e5e7eb); }
+.milkdown-polish-actions button:disabled { opacity: .55; cursor: not-allowed; }
+.milkdown-polish-actions .milkdown-polish-accept { background: var(--primary, #475569); color: var(--primary-foreground, #fff); }
+.milkdown-polish-actions .milkdown-polish-accept:hover:not(:disabled) { filter: brightness(1.08); background: var(--primary, #475569); }
+/* 渲染式对照：一行一块、左右对齐（与「云端 vs 本地」冲突弹窗同一套做法）。
+   两侧都是渲染结果，所以区块底色本身就表示「这块被改过」，不再需要行内逐字标记。 */
+.milkdown-polish-body--rows { display: block; overflow-y: auto; overscroll-behavior: contain; padding: 0 16px 14px; }
+.milkdown-polish-row-head,
+.milkdown-polish-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.milkdown-polish-row-head { position: sticky; top: 0; z-index: 1; padding: 10px 0 8px; border-bottom: 1px solid var(--border, #ddd); color: var(--muted-foreground, #777); background: var(--card, #fff); font-size: 12px; font-weight: 600; }
+.milkdown-polish-row-head span { padding: 0 4px; }
+.milkdown-polish-row { align-items: start; padding: 3px 0; }
+.milkdown-polish-cell { min-width: 0; padding: 4px 8px; border-radius: 7px; font-size: 13.5px; line-height: 1.75; overflow-wrap: anywhere; }
+.milkdown-polish-cell.is-del { background: color-mix(in srgb, var(--destructive, #b42318) 10%, transparent); }
+.milkdown-polish-cell.is-add { background: color-mix(in srgb, #4f9d69 13%, transparent); }
+.milkdown-polish-cell.is-same { color: var(--muted-foreground, #777); }
+.milkdown-polish-cell.is-empty { color: var(--muted-foreground, #bbb); font-size: 11.5px; font-style: italic; }
+.milkdown-polish-cell-empty { color: inherit; }
+/* 区块里装的是只读渲染器（.milkdown-content）输出：字号行高继承单元格、块间距压紧，
+   否则一段 16px/1.8 的正文塞进 13.5px 的对照里会显得比编辑器里还松。 */
+.milkdown-polish-cell .milkdown-content { color: inherit; font-size: inherit; line-height: inherit; }
+.milkdown-polish-cell .milkdown-content > :first-child { margin-top: 0; }
+.milkdown-polish-cell .milkdown-content > :last-child { margin-bottom: 0; }
+.milkdown-polish-cell .milkdown-content p,
+.milkdown-polish-cell .milkdown-content ul,
+.milkdown-polish-cell .milkdown-content ol,
+.milkdown-polish-cell .milkdown-content blockquote,
+.milkdown-polish-cell .milkdown-content pre { margin: .35em 0; }
+.milkdown-polish-cell .milkdown-content h1,
+.milkdown-polish-cell .milkdown-content h2,
+.milkdown-polish-cell .milkdown-content h3,
+.milkdown-polish-cell .milkdown-content h4,
+.milkdown-polish-cell .milkdown-content h5,
+.milkdown-polish-cell .milkdown-content h6 { margin: .6em 0 .3em; font-size: 1.12em; }
+
+@media (max-width: 780px) {
+  .milkdown-polish-dialog { width: calc(100vw - 24px); }
+  .milkdown-polish-body { flex-direction: column; overflow-y: auto; }
+  /* 窄屏并排放两栏渲染结果谁都读不清：改成上下叠，空的那一侧直接不占位。 */
+  .milkdown-polish-row-head { display: none; }
+  .milkdown-polish-row { grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 6px 0; border-bottom: 1px solid var(--border, #eee); }
+  .milkdown-polish-cell.is-empty { display: none; }
+  .milkdown-polish-panel { flex: 0 0 auto; min-height: 0; }
+  .milkdown-polish-text { overflow: visible; }
+  .milkdown-polish-panel + .milkdown-polish-panel { border-left: 0; border-top: 1px solid var(--border, #ddd); }
+  .milkdown-polish-dialog > footer { flex-direction: column; align-items: stretch; }
+  .milkdown-polish-actions { justify-content: flex-end; }
+}

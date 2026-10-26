@@ -254,6 +254,22 @@ export interface StoryAiModelsResponse {
 export interface EditorAiConversationDto {
   id: string
   scopeId: string
+  /**
+   * 工作区归属（"library" / "article"，空串或未设＝未分组）。
+   *
+   * scopeId 管的是「从哪个入口建的」（AI 对话页 / 设计助手 / 悬浮球），工作区管的是
+   * 「这份对话归在哪份素材上」；桌面端把对话按它分组显示，也让 Agent 的工作目录跟着它走。
+   */
+  workspace?: string
+  /**
+   * 工作区里的具体落点：资源库＝相对库根的文件夹路径（空串＝资源库根目录），
+   * 文章区＝文章 key（空串＝整个文章区）。
+   *
+   * 空了就是「整个工作区」。非空时桌面端会把 Agent 那一轮的子进程工作目录收窄到
+   * 这个文件夹 / 这篇文章所在的目录，于是「这条对话绑在哪儿」不只是分类，而是
+   * Agent 真正能直接读到哪些文件。
+   */
+  workspaceTarget?: string
   title?: string
   summary?: string
   lastModel?: string

@@ -5,6 +5,7 @@ import { authMiddleware, AuthVariables } from './middleware/auth'
 import { z } from 'zod'
 import { Prisma } from '@/generated/prisma/client'
 import { resolvePhotoUrlsInto } from '~/server/lib/photo-urls'
+import { revalidateAfterWrite, STATIC_PUBLIC_PATHS } from '~/server/lib/revalidate'
 
 const filmRolls = new Hono<{ Variables: AuthVariables }>()
 
@@ -79,6 +80,8 @@ function extractTitleSequenceNumber(title: string, totalFrames: number) {
 
 // Auth for admin routes
 filmRolls.use('/admin/*', authMiddleware)
+// 胶卷卷宗直接决定 /gallery/film 的内容，而该页同样是构建期静态页。
+filmRolls.use('/admin/*', revalidateAfterWrite([STATIC_PUBLIC_PATHS.film]))
 
 // Public: list all film rolls (with photo count)
 filmRolls.get('/film-rolls', async (c) => {

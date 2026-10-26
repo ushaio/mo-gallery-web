@@ -17,7 +17,9 @@ import { db } from '~/server/lib/db'
 import { createStoryAiStream, fetchStoryAiModels } from '~/server/lib/story-ai'
 import { polishStoryAiPrompt } from '~/server/lib/story-ai-prompt'
 import { authMiddleware, AuthVariables } from './middleware/auth'
+import { readOwnerViewer } from '~/server/lib/optional-admin'
 import { resolvePhotoUrlsInto } from '~/server/lib/photo-urls'
+import { revalidateAfterWrite, STATIC_PUBLIC_PATHS } from '~/server/lib/revalidate'
 
 const stories = new Hono<{ Variables: AuthVariables }>()
 
@@ -135,9 +137,11 @@ stories.get('/stories', async (c) => {
 stories.get('/stories/:id', async (c) => {
   try {
     const id = c.req.param('id')
+    const ownerViewer = readOwnerViewer(c)
 
     const story = await db.story.findUnique({
-      where: { id, isPublished: true },
+      // 作者/所有者登录后可读自己的不可见叙事；其余情况按访客口径过滤
+      where: ownerViewer ? { id } : { id, isPublished: true },
       include: {
         ...ARTICLE_CONTENT_INCLUDE,
         photos: {
@@ -176,7 +180,8 @@ stories.get('/stories/:id/comments', async (c) => {
 
     // Find the story and get all its photo IDs
     const story = await db.story.findUnique({
-      where: { id, isPublished: true },
+      // 与 /stories/:id 保持一致：作者/所有者登录后可读自己的不可见叙事
+      where: readOwnerViewer(c) ? { id } : { id, isPublished: true },
       select: {
         photos: {
           select: { id: true },
@@ -221,14 +226,13 @@ stories.get('/stories/:id/comments', async (c) => {
 stories.get('/photos/:photoId/story', async (c) => {
   try {
     const photoId = c.req.param('photoId')
+    const ownerViewer = readOwnerViewer(c)
 
     const story = await db.story.findFirst({
-      where: {
-        isPublished: true,
-        photos: {
-          some: { id: photoId },
-        },
-      },
+      // 作者/所有者登录后可通过照片反查到自己的不可见叙事
+      where: ownerViewer
+        ? { photos: { some: { id: photoId } } }
+        : { isPublished: true, photos: { some: { id: photoId } } },
       include: {
         ...ARTICLE_CONTENT_INCLUDE,
         photos: {
@@ -261,6 +265,12 @@ stories.get('/photos/:photoId/story', async (c) => {
 
 // Protected admin endpoints
 stories.use('/admin/*', authMiddleware)
+// 叙事写接口：/story 列表与 /sitemap.xml 都是构建期静态页（无 ISR），
+// 落库后不显式刷新就要等下一次部署才会出现在线上。AI 生成 / 润色只读库不落库，跳过。
+stories.use('/admin/*', revalidateAfterWrite(
+  [STATIC_PUBLIC_PATHS.stories, STATIC_PUBLIC_PATHS.sitemap],
+  { skipPathIncludes: ['/ai/'] },
+))
 
 // Get story for a specific photo (admin - includes unpublished)
 stories.get('/admin/photos/:photoId/story', async (c) => {

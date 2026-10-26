@@ -726,7 +726,21 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         confirmLabel={t('admin.save_and_process_pasted_images')}
         currentStoryId={currentStory?.id}
       />
-      <SimpleDeleteDialog isOpen={!!deleteStoryId} onConfirm={confirmDeleteStory} onCancel={() => setDeleteStoryId(null)} t={t} />
+      <SimpleDeleteDialog
+        isOpen={!!deleteStoryId}
+        title={t('admin.story_delete_title')}
+        message={
+          deleteStoryId
+            ? t('admin.story_delete_named_confirm').replace(
+                '{name}',
+                stories.find((item) => item.id === deleteStoryId)?.title?.trim() || t('story.untitled'),
+              )
+            : ''
+        }
+        onConfirm={confirmDeleteStory}
+        onCancel={() => setDeleteStoryId(null)}
+        t={t}
+      />
       <DraftRestoreDialog isOpen={draftRestoreDialog.isOpen} draftTime={draftRestoreDialog.draft?.savedAt || 0} onRestore={handleDraftRestore} onDiscard={handleDraftDiscard} onCancel={handleDraftCancel} t={t} />
       {showPreview && currentStory ? (
         <StoryPreviewModal

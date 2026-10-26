@@ -6,8 +6,14 @@ export async function getBlogs(limit?: number): Promise<BlogDto[]> {
   return apiRequestData<BlogDto[]>(`/api/blogs${query}`)
 }
 
-export async function getBlog(id: string): Promise<BlogDto> {
-  return apiRequestData<BlogDto>(`/api/blogs/${encodeURIComponent(id)}`)
+/**
+ * 读取博客文章详情。
+ *
+ * 与 `getStory` 相同：不传 token 按访客口径（不可见文章 404），传入作者/所有者
+ * token 时允许作者本人查看自己的不可见文章；无权限凭证降级为访客视角而非 401。
+ */
+export async function getBlog(id: string, token?: string | null): Promise<BlogDto> {
+  return apiRequestData<BlogDto>(`/api/blogs/${encodeURIComponent(id)}`, {}, token)
 }
 
 export async function getBlogCategories(): Promise<string[]> {

@@ -24,6 +24,7 @@ import { invalidatePhotoUrlCache, resolvePhotoUrls } from '~/server/lib/photo-ur
 import { StorageProviderFactory, StorageError, getStorageConfig, getStorageConfigBySourceId } from '~/server/lib/storage'
 import sharp from 'sharp'
 import path from 'path'
+import { revalidateAfterWrite, STATIC_PUBLIC_PATHS } from '~/server/lib/revalidate'
 
 const photos = new Hono<{ Variables: AuthVariables }>()
 const THUMBNAIL_EXTENSION = '.avif'
@@ -541,6 +542,12 @@ photos.get('/tags', async (c) => {
 
 // Protected endpoints
 photos.use('/admin/*', authMiddleware)
+// 照片改动影响首页精选、/curated 与 /gallery/film（三者都是构建期静态页）；
+// 查重 / 查所属叙事只读库，跳过以免无谓清缓存。
+photos.use('/admin/*', revalidateAfterWrite(
+  [STATIC_PUBLIC_PATHS.home, STATIC_PUBLIC_PATHS.curated, STATIC_PUBLIC_PATHS.film],
+  { skipPathIncludes: ['/check-duplicate', '/check-stories'] },
+))
 
 // Check for duplicate photos by file hash
 photos.post('/admin/photos/check-duplicate', async (c) => {

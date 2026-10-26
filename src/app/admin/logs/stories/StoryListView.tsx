@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import {
+  ArrowDown,
+  ArrowUp,
   BookOpen,
   Calendar,
   Edit3,
@@ -23,6 +25,9 @@ import { Skeleton } from '@/components/admin/Skeleton'
 import type { StoryDto } from '@/lib/api/types'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { getArticlePlainText } from '@/lib/article-content'
+
+type StorySortKey = 'updated' | 'createdAt' | 'storyDate'
+type StorySortDir = 'asc' | 'desc'
 
 interface StoryListViewProps {
   stories: StoryDto[]
@@ -76,11 +81,20 @@ export function StoryListView({
   onRefresh,
 }: StoryListViewProps) {
   const [searchQuery, setSearchQuery] = useState('')
+  // 排序条件：最近修改 / 创建日期 / 叙事日期（与桌面端叙事列表同一组键）
+  const [sortKey, setSortKey] = useState<StorySortKey>('updated')
+  const [sortDir, setSortDir] = useState<StorySortDir>('desc')
 
   const statusOptions: SelectOption[] = [
     { value: '', label: t('admin.all_status') },
     { value: 'published', label: t('admin.published') },
     { value: 'draft', label: t('admin.draft') },
+  ]
+
+  const sortOptions: SelectOption[] = [
+    { value: 'updated', label: t('admin.story_sort_updated') },
+    { value: 'createdAt', label: t('admin.story_sort_created') },
+    { value: 'storyDate', label: t('admin.story_sort_story_date') },
   ]
 
   const filteredStories = useMemo(() => {
@@ -104,15 +118,18 @@ export function StoryListView({
 
   const hasActiveFilters = !!statusFilter || !!searchQuery.trim()
 
-  const sortedStories = useMemo(
-    () =>
-      [...filteredStories].sort(
-        (left, right) =>
-          new Date(right.updatedAt || right.createdAt).getTime() -
-          new Date(left.updatedAt || left.createdAt).getTime(),
-      ),
-    [filteredStories],
-  )
+  const sortedStories = useMemo(() => {
+    const dir = sortDir === 'asc' ? 1 : -1
+    const timeOf = (story: StoryDto) =>
+      new Date(
+        sortKey === 'storyDate'
+          ? story.storyDate
+          : sortKey === 'createdAt'
+            ? story.createdAt
+            : (story.updatedAt || story.createdAt),
+      ).getTime()
+    return [...filteredStories].sort((left, right) => dir * (timeOf(left) - timeOf(right)))
+  }, [filteredStories, sortDir, sortKey])
 
   // 列表按「今天 / 本周 / 本月 / 更早」分段（参考桌面端叙事列表）
   const timeGroups = useMemo(() => {
@@ -220,6 +237,22 @@ export function StoryListView({
               uiSize="sm"
               className="w-28 shrink-0"
             />
+            <AdminSelect
+              value={sortKey}
+              options={sortOptions}
+              onChange={(value) => setSortKey(value as StorySortKey)}
+              placeholder={t('admin.sort')}
+              uiSize="sm"
+              className="w-28 shrink-0"
+            />
+            <AdminButton
+              onClick={() => setSortDir((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
+              adminVariant="outline"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md p-0"
+              title={sortDir === 'desc' ? t('admin.story_sort_desc_hint') : t('admin.story_sort_asc_hint')}
+            >
+              {sortDir === 'desc' ? <ArrowDown className="h-3.5 w-3.5" /> : <ArrowUp className="h-3.5 w-3.5" />}
+            </AdminButton>
             {onRefresh ? (
               <AdminButton onClick={onRefresh} adminVariant="outline" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md p-0" title={t('common.refresh')}>
                 <RefreshCw className="h-3.5 w-3.5" />
@@ -237,6 +270,22 @@ export function StoryListView({
                 <input type="text" placeholder={t('admin.search_placeholder')} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="h-9 w-56 rounded-md border border-border bg-card px-3 pl-8 text-sm outline-none transition-colors focus:border-primary" />
               </div>
               <AdminSelect value={statusFilter} options={statusOptions} onChange={onStatusFilterChange} placeholder={t('admin.all_status')} className="w-32" />
+              <AdminSelect
+                value={sortKey}
+                options={sortOptions}
+                onChange={(value) => setSortKey(value as StorySortKey)}
+                placeholder={t('admin.sort')}
+                className="w-32"
+              />
+              <AdminButton
+                onClick={() => setSortDir((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
+                adminVariant="outline"
+                size="sm"
+                className="flex items-center rounded-md"
+                title={sortDir === 'desc' ? t('admin.story_sort_desc_hint') : t('admin.story_sort_asc_hint')}
+              >
+                {sortDir === 'desc' ? <ArrowDown className="h-3.5 w-3.5" /> : <ArrowUp className="h-3.5 w-3.5" />}
+              </AdminButton>
             </div>
             <div className="flex items-center gap-2">
               {onRefresh ? <AdminButton onClick={onRefresh} adminVariant="outline" size="sm" className="flex items-center rounded-md" title={t('common.refresh')}><RefreshCw className="h-3.5 w-3.5" /></AdminButton> : null}
@@ -291,7 +340,7 @@ export function StoryListView({
               </div>
             )}
           </div>
-        ) : (
+        ) : sortKey === 'updated' ? (
           <div className={`flex flex-col ${compact ? 'gap-4 pb-2' : 'gap-6 pb-2'}`}>
             {timeSectionLabels.map(({ key, label }) => {
               const items = timeGroups[key]
@@ -309,6 +358,11 @@ export function StoryListView({
                 </section>
               )
             })}
+          </div>
+        ) : (
+          // 按创建日期 / 叙事日期排序时不分组，直接平铺（分组只对「最近修改」有意义）
+          <div className={`grid grid-cols-1 ${compact ? 'gap-1.5' : 'gap-3'} pb-2`}>
+            {sortedStories.map(renderStoryRow)}
           </div>
         )}
       </div>

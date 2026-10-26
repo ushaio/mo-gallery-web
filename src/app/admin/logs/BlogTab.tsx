@@ -473,7 +473,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   const statusOptions: SelectOption[] = [
     { value: '', label: t('admin.all_status') || '全部状态' },
     { value: 'published', label: t('admin.published') || '已发布' },
-    { value: 'draft', label: t('admin.draft') || '草稿' },
+    { value: 'draft', label: t('admin.draft') || '不可见' },
   ]
 
   return (
@@ -765,7 +765,21 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
         </div>
       )}
 
-      <SimpleDeleteDialog isOpen={!!deleteBlogId} onConfirm={confirmDeleteBlog} onCancel={() => setDeleteBlogId(null)} t={t} />
+      <SimpleDeleteDialog
+        isOpen={!!deleteBlogId}
+        title={t('admin.blog_delete_title')}
+        message={
+          deleteBlogId
+            ? t('admin.blog_delete_named_confirm').replace(
+                '{name}',
+                blogs.find((item) => item.id === deleteBlogId)?.title?.trim() || t('admin.untitled'),
+              )
+            : ''
+        }
+        onConfirm={confirmDeleteBlog}
+        onCancel={() => setDeleteBlogId(null)}
+        t={t}
+      />
       <DraftRestoreDialog
         isOpen={draftRestoreDialog.isOpen}
         draftTime={draftRestoreDialog.draft?.savedAt || 0}

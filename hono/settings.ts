@@ -10,8 +10,13 @@ import {
 } from '~/server/lib/stored-secrets'
 import { WECHAT_BINDING_SETTING_KEY, WECHAT_EGRESS_OBSERVED_SETTING_KEY } from '~/server/lib/wechat'
 import { WECHAT_TEMPORARY_MATERIALS_SETTING_KEY } from '~/server/lib/wechat-materials'
+import { revalidateAfterWrite, STATIC_PUBLIC_PATHS } from '~/server/lib/revalidate'
 
 const settings = new Hono<{ Variables: AuthVariables }>()
+
+// 站点设置（站点标题、导航、页脚等）由根 layout 读取，改完后整站静态页都要失效，
+// 因此按 layout 粒度刷新，范围覆盖所有页面。
+settings.use('*', revalidateAfterWrite([STATIC_PUBLIC_PATHS.home], { scope: 'layout' }))
 
 const ENV_SETTINGS = new Set(['site_title', 'cdn_domain'])
 // 由专用接口读写的内部设置，不通过通用设置接口暴露（值是含密文的 blob / 素材索引）

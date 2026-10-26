@@ -24,6 +24,14 @@ export interface StreamVercelAiTextOptions {
   onEvent?: (event: EditorAiStreamEvent) => void
   onUsage?: (usage: EditorAiUsage) => void
   tools?: Record<string, EditorAiRuntimeTool>
+  /**
+   * 工具循环的步数上限（一个模型响应算一步，并行工具调用同属一步）。
+   *
+   * 多步任务 6 步不够：照片成文的典型走法是「读页面+技能+查照片事实 → 采访 → 成文」，
+   * 中途再加一两次核对就到 6 步——上限一到循环直接掐断，模型还一字未写，界面只剩
+   * 「模型未返回内容」（2026-10-25 桌面端实测）。默认 12：够走完整条链，仍兜得住失控循环。
+   */
+  stopAfterSteps?: number
   /** Internal injection point for tests and custom runtimes. */
   languageModel?: LanguageModel
 }
@@ -60,7 +68,7 @@ export async function streamVercelAiText(
       } : {}),
       abortSignal: options.signal,
       tools: toVercelTools(options.tools),
-      stopWhen: options.tools ? stepCountIs(6) : undefined,
+      stopWhen: options.tools ? stepCountIs(options.stopAfterSteps ?? 12) : undefined,
     })
 
     let fullText = ''
