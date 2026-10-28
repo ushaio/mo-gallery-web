@@ -203,6 +203,9 @@ model Album {
   description String?
   coverUrl    String?
   location    String?
+  // 相册类型：'general' 不区分（默认，画廊与策展页都展示） | 'normal' 普通相册（仅画廊） | 'curated' 策展（策展页与画廊）
+  // 与 StorageSource.type 同款写法：用 String 存枚举值，避免迁移时新建 PG 枚举类型。
+  type        String   @default("general")
   isPublished Boolean  @default(false)
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
@@ -211,6 +214,7 @@ model Album {
   photos Photo[] @relation("AlbumPhotos")
 
   @@index([isPublished])
+  @@index([type])
   @@index([sortOrder])
   @@index([createdAt])
 }

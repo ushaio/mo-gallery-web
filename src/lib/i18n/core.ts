@@ -36,7 +36,7 @@ export const coreMessages: LocaleDictionaryGroup = {
       home: '首页',
       gallery: '画廊',
       gallery_film: '胶片',
-      curated: '精选',
+      curated: '策展',
       story: '叙事',
       they: '他们',
       about: '关于',

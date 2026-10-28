@@ -15,6 +15,8 @@ const AlbumLocationSchema = z.preprocess(
   z.string().max(200).optional().nullable(),
 )
 
+// 相册类型：不区分（默认，画廊 + 策展页） / 普通相册（仅画廊） / 策展（策展页 + 画廊）
+const AlbumTypeSchema = z.enum(['general', 'normal', 'curated'])
 const CreateAlbumSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(2000).optional(),
@@ -22,6 +24,7 @@ const CreateAlbumSchema = z.object({
   location: AlbumLocationSchema,
   isPublished: z.boolean().default(false),
   sortOrder: z.number().int().default(0),
+  type: AlbumTypeSchema.default('general'),
   photoIds: z.array(z.string().uuid()).optional(),
 })
 
@@ -32,6 +35,7 @@ const UpdateAlbumSchema = z.object({
   location: AlbumLocationSchema,
   isPublished: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
+  type: AlbumTypeSchema.optional(),
 })
 
 const AddPhotosSchema = z.object({
@@ -247,6 +251,7 @@ albums.post('/admin/albums', async (c) => {
         coverUrl: validated.coverUrl,
         location: validated.location,
         isPublished: validated.isPublished,
+        type: validated.type,
         sortOrder: validated.sortOrder,
         photos: validated.photoIds
           ? {

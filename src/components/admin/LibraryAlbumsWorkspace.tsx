@@ -30,7 +30,8 @@ import {
   setAlbumCover,
   updateAlbum,
 } from '@/lib/api'
-import type { AlbumDto, PhotoDto } from '@/lib/api/types'
+import type { PhotoDto } from '@/lib/api/types'
+import { ALBUM_KINDS, DEFAULT_ALBUM_KIND, resolveAlbumKind, type AlbumKind, type AlbumWithKind } from '@/lib/album-kind'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { CustomInput } from '@/components/ui/CustomInput'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
@@ -51,7 +52,7 @@ interface LibraryAlbumsWorkspaceProps {
   onOpenRequestHandled?: (requestId: number) => void
 }
 
-function draftAlbum(sortOrder: number): AlbumDto {
+function draftAlbum(sortOrder: number): AlbumWithKind {
   const now = new Date().toISOString()
   return {
     id: '',
@@ -59,6 +60,7 @@ function draftAlbum(sortOrder: number): AlbumDto {
     description: '',
     coverUrl: '',
     location: '',
+    type: DEFAULT_ALBUM_KIND,
     isPublished: false,
     sortOrder,
     photoCount: 0,
@@ -81,9 +83,9 @@ export function LibraryAlbumsWorkspace({
   openRequest,
   onOpenRequestHandled,
 }: LibraryAlbumsWorkspaceProps) {
-  const [albums, setAlbums] = useState<AlbumDto[]>([])
+  const [albums, setAlbums] = useState<AlbumWithKind[]>([])
   const [loading, setLoading] = useState(true)
-  const [currentAlbum, setCurrentAlbum] = useState<AlbumDto | null>(null)
+  const [currentAlbum, setCurrentAlbum] = useState<AlbumWithKind | null>(null)
   const [activeTab, setActiveTab] = useState<AlbumTab>('overview')
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -91,7 +93,7 @@ export function LibraryAlbumsWorkspace({
   const [showPhotoSelector, setShowPhotoSelector] = useState(false)
   const [photoSearch, setPhotoSearch] = useState('')
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set())
-  const [pendingDelete, setPendingDelete] = useState<AlbumDto | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<AlbumWithKind | null>(null)
   const requestIdRef = useRef(0)
   const handledCreateSignalRef = useRef(0)
   const handledOpenRequestRef = useRef(0)
@@ -139,7 +141,7 @@ export function LibraryAlbumsWorkspace({
     })
   }, [currentAlbum?.photos, photoSearch, photos])
 
-  const openAlbum = useCallback(async (album: AlbumDto, tab: AlbumTab = 'photos') => {
+  const openAlbum = useCallback(async (album: AlbumWithKind, tab: AlbumTab = 'photos') => {
     if (!token) return
     const requestId = ++requestIdRef.current
     setCurrentAlbum(album)
@@ -201,6 +203,7 @@ export function LibraryAlbumsWorkspace({
         location: currentAlbum.location?.trim() || null,
         isPublished: currentAlbum.isPublished,
         sortOrder: currentAlbum.sortOrder,
+        type: resolveAlbumKind(currentAlbum),
       }
       const saved = currentAlbum.id
         ? await updateAlbum(token, currentAlbum.id, data)
@@ -221,7 +224,7 @@ export function LibraryAlbumsWorkspace({
     }
   }
 
-  const updateCurrentAlbum = (patch: Partial<AlbumDto>) => {
+  const updateCurrentAlbum = (patch: Partial<AlbumWithKind>) => {
     setCurrentAlbum((current) => current ? { ...current, ...patch } : current)
   }
 
@@ -357,6 +360,20 @@ export function LibraryAlbumsWorkspace({
         {activeTab === 'overview' ? (
           <div className="max-w-2xl space-y-5">
             <Field label={t('admin.album_name')}><CustomInput variant="config" value={currentAlbum.name} onChange={(event) => updateCurrentAlbum({ name: event.target.value })} /></Field>
+            <div>
+              <Field label={t('admin.album_type')}>
+                <select
+                  value={resolveAlbumKind(currentAlbum)}
+                  onChange={(event) => updateCurrentAlbum({ type: event.target.value as AlbumKind })}
+                  className="h-10 w-full border border-border bg-background px-3 text-sm outline-none focus:border-primary"
+                >
+                  {ALBUM_KINDS.map((kind) => (
+                    <option key={kind} value={kind}>{t(`admin.album_type_${kind}`)}</option>
+                  ))}
+                </select>
+              </Field>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">{t('admin.album_type_hint')}</p>
+            </div>
             <Field label={t('admin.album_location')}><CustomInput variant="config" value={currentAlbum.location || ''} onChange={(event) => updateCurrentAlbum({ location: event.target.value })} /></Field>
             <Field label={t('admin.description')}><textarea value={currentAlbum.description || ''} onChange={(event) => updateCurrentAlbum({ description: event.target.value })} className="h-28 w-full resize-none border border-border bg-background p-3 text-sm outline-none focus:border-primary" /></Field>
             <label className="flex items-center gap-3 border border-border bg-muted/30 p-3 text-sm"><input type="checkbox" checked={currentAlbum.isPublished} onChange={(event) => updateCurrentAlbum({ isPublished: event.target.checked })} className="size-4 accent-primary" />{currentAlbum.isPublished ? t('admin.published') : t('admin.draft')}</label>

@@ -5,6 +5,7 @@ import { db } from './db'
 import { resolvePhotoUrls } from './photo-urls'
 import type { Prisma } from '@/generated/prisma/client'
 import type { PhotoDto, BlogDto, BlogListItemDto, StoryDto, StoryCoverCropValue, PhotoPaginationMeta, FilmRollDto } from '@/lib/api/types'
+import { CURATED_PAGE_KINDS, normalizeAlbumKind, type AlbumWithKind } from '@/lib/album-kind'
 
 const PHOTO_INCLUDE = { tags: true, camera: true, lens: true } as const
 const STORY_INCLUDE = {
@@ -163,6 +164,41 @@ export const queryAlbumMetadata = cache(async (id: string) => {
     },
   })
 })
+
+// 策展页数据源：只取「不区分」与「策展」两类，普通相册留在画廊里。
+// 一张照片可同时属于多个相册（隐式多对多），这里只按相册类型筛选，不影响照片归属。
+export async function queryPublishedAlbums(): Promise<AlbumWithKind[]> {
+  const albumsList = await db.album.findMany({
+    where: { isPublished: true, type: { in: [...CURATED_PAGE_KINDS] } },
+    include: {
+      photos: {
+        where: { showFlag: true },
+        include: PHOTO_INCLUDE,
+      },
+      _count: {
+        select: { photos: { where: { showFlag: true } } },
+      },
+    },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+  })
+
+  return Promise.all(
+    albumsList.map(async (album) => ({
+      id: album.id,
+      name: album.name,
+      description: album.description ?? undefined,
+      coverUrl: album.coverUrl ?? undefined,
+      location: album.location ?? undefined,
+      isPublished: album.isPublished,
+      type: normalizeAlbumKind(album.type),
+      sortOrder: album.sortOrder,
+      photoCount: album._count.photos,
+      createdAt: serializeDate(album.createdAt),
+      updatedAt: serializeDate(album.updatedAt),
+      photos: await Promise.all(album.photos.map(mapPhotoToDto)),
+    }))
+  )
+}
 
 export async function querySitemapContent() {
   const select = { id: true, updatedAt: true } as const
