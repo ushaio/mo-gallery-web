@@ -204,7 +204,7 @@ const deleteSlotSchema = z.object({
   slotId: boundedIdSchema,
 }).strict()
 
-function assertTaskTargetIdentity(task: DirectEditAgentTask): void {
+export function assertTaskTargetIdentity(task: DirectEditAgentTask): void {
   const issue = validateDirectEditTaskTargetIdentity(task.snapshot, task.authorization)[0]
   if (issue) throw new EditorAiExecutionError('operation_not_authorized', issue.message)
 }
@@ -233,7 +233,7 @@ function zineSnapshotSlotIds(task: DirectEditAgentTask): string[] {
   ))
 }
 
-function createRuntimeTools(
+export function createRuntimeTools(
   task: DirectEditAgentTask,
   capability: 'narrative' | 'zine',
   maxAutoFixIterations: number,
