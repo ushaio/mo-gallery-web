@@ -24,6 +24,8 @@ import { blockStyleSchema } from './block-style-plugin'
 import { MediaDialog } from './MediaDialog'
 import { buildMediaMarkdown, normalizeMedia, safeMediaUrl } from './media'
 import { parseMediaEmbed } from './media-embed'
+import { applyMilkdownFormatCommand, getMilkdownFormatState, readListMetrics } from './editor-commands'
+import type { MilkdownFormatCommand, MilkdownFormatResult, MilkdownFormatState } from './editor-commands'
 import type { MediaCardData, MediaLinkPreviewResolver, MediaUrlResolver } from './media'
 import type { MediaDialogSelectRenderer } from './media-dialog-select'
 import './style.css'
@@ -54,6 +56,40 @@ export interface MilkdownEditorHandle {
    * 宿主在待传项预览图变化时调用，让占位卡按 uploadId 重新取一次预览。
    */
   refreshUploadPreviews: () => void
+  /**
+   * 读编辑器自身的格式状态（块类型 / 标题级别 / 行内 mark / 对齐 / 字号 / 字体 /
+   * 颜色 / 列表 / 引用 / 撤销栈）。
+   *
+   * 与 TipTap 侧的 `getFormatState` 是同一份词汇表：调用方只按「编辑器能做什么」编程，
+   * 不需要知道底层是 Crepe 还是 TipTap。
+   */
+  getFormatState: () => MilkdownFormatState | null
+  /**
+   * 执行一条格式命令（白名单枚举），直接走 ProseMirror 命令而不是点工具栏。
+   *
+   * 工具栏是渲染出来的视图：要先展开菜单、按钮可能因选区被禁用、随时可能因为布局被
+   * 折叠。命令是同一份语义的唯一事实来源，也不随 UI 变化。
+   */
+  executeFormatCommand: (command: MilkdownFormatCommand) => MilkdownFormatResult
+  /** 把选区放到指定文档位置；格式命令作用于当前选区。 */
+  setSelection: (from: number, to?: number) => boolean
+  /** 整体替换正文（一次事务，不弹差异浮窗）。 */
+  setContent: (content: string) => boolean
+  /** 走 ProseMirror 的文本输入通道打字，Markdown 输入规则会生效。 */
+  typeText: (text: string) => boolean
+  /** 走 keymap 发一次按键。 */
+  pressKey: (input: MilkdownKeyInput) => boolean
+  /** 读列表项渲染度量（字号、::marker）。这是唯一必须读 DOM 的读取方法。 */
+  getListMetrics: () => ReturnType<typeof readListMetrics>
+}
+
+export interface MilkdownKeyInput {
+  key: string
+  code?: string
+  ctrlKey?: boolean
+  altKey?: boolean
+  shiftKey?: boolean
+  metaKey?: boolean
 }
 
 /** 一次「按文字定位再替换」（或整篇替换）的请求；由外部 AI 工具发起。 */
@@ -627,6 +663,94 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
       if (alive.current) refreshMediaDialog((version) => version + 1)
     },
     applyTextEdit,
+    getFormatState: () => {
+      const editor = get()
+      if (editor?.status !== EditorStatus.Created) return null
+      return getMilkdownFormatState(editor.ctx.get(editorViewCtx).state)
+    },
+    executeFormatCommand: (command: MilkdownFormatCommand) => {
+      const editor = get()
+      if (editor?.status !== EditorStatus.Created) {
+        return { ok: false, reason: '编辑器尚未就绪' } satisfies MilkdownFormatResult
+      }
+      const view = editor.ctx.get(editorViewCtx)
+      // 与工具栏按钮同样的门禁：busy（AI 润色/上传占位解析中）或只读时不许改文档。
+      if (busy.current) return { ok: false, reason: '编辑器正忙（AI 任务或上传处理中）' }
+      if (!view.editable) return { ok: false, reason: '当前文档是只读的' }
+      view.focus()
+      return applyMilkdownFormatCommand(view.state, view.dispatch, command)
+    },
+    setSelection: (from: number, to = from) => {
+      const editor = get()
+      if (editor?.status !== EditorStatus.Created) return false
+      const view = editor.ctx.get(editorViewCtx)
+      if (!Number.isInteger(from) || !Number.isInteger(to)) return false
+      const min = Math.min(from, to)
+      const max = Math.max(from, to)
+      if (min < 1 || max > view.state.doc.content.size + 1) return false
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, min, max)).scrollIntoView())
+      view.focus()
+      return true
+    },
+    setContent: (content: string) => {
+      const editor = get()
+      if (editor?.status !== EditorStatus.Created || busy.current) return false
+      const view = editor.ctx.get(editorViewCtx)
+      if (!view.editable) return false
+      // 一次事务完成整篇替换：与 applyTextEdit 的 `scope: 'document'` 语义一致，但
+      // 不弹差异浮窗——那条路径是给「用户确认后改稿」用的，AI 直改场景要的是立即生效。
+      editor.action(replaceAll(content))
+      return true
+    },
+    typeText: (text: string) => {
+      const editor = get()
+      if (editor?.status !== EditorStatus.Created || busy.current) return false
+      const view = editor.ctx.get(editorViewCtx)
+      if (!view.editable) return false
+      view.focus()
+      // 逐字符走 handleTextInput，让 Markdown 输入规则（"## "、"* "、"> "）真的触发。
+      for (const character of text) {
+        if (character === '\n') {
+          view.dom.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }))
+          continue
+        }
+        const { from, to } = view.state.selection
+        const handled = view.someProp('handleTextInput', (handler) => handler(
+          view,
+          from,
+          to,
+          character,
+          () => view.state.tr.insertText(character, from, to),
+        )) === true
+        if (!handled) view.dispatch(view.state.tr.insertText(character, from, to).scrollIntoView())
+      }
+      return true
+    },
+    pressKey: (input: MilkdownKeyInput) => {
+      const editor = get()
+      if (editor?.status !== EditorStatus.Created || busy.current) return false
+      const view = editor.ctx.get(editorViewCtx)
+      if (!view.editable) return false
+      const event = new KeyboardEvent('keydown', {
+        key: input.key,
+        code: input.code || input.key,
+        ctrlKey: input.ctrlKey === true,
+        altKey: input.altKey === true,
+        shiftKey: input.shiftKey === true,
+        metaKey: input.metaKey === true,
+        bubbles: true,
+        cancelable: true,
+      })
+      view.focus()
+      const handled = view.someProp('handleKeyDown', (handler) => handler(view, event))
+      if (!handled) view.dom.dispatchEvent(event)
+      return true
+    },
+    getListMetrics: () => {
+      const editor = get()
+      if (editor?.status !== EditorStatus.Created) return []
+      return readListMetrics(editor.ctx.get(editorViewCtx).dom)
+    },
   }), [applyTextEdit, get, insertMarkdown, updateUpload])
 
   const closeMedia = () => {

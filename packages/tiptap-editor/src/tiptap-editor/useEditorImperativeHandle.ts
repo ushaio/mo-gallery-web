@@ -13,6 +13,7 @@ import {
   convertHtmlImageToAttrs,
   isMarkdownImageSyntax,
   isMarkdownContent,
+  normalizeHexColor,
 } from './markdown-converter'
 import { IMAGE_WIDTH_PRESETS } from './editor-constants'
 import {
@@ -37,6 +38,78 @@ export interface NarrativeTipTapEditorHandle {
   automationTypeText: (text: string) => boolean
   automationPressKey: (input: NarrativeEditorAutomationKeyInput) => boolean
   automationSetSelection: (from: number, to?: number) => boolean
+  /**
+   * 读编辑器自身的格式状态（而不是去解析渲染出来的工具栏 DOM）。
+   *
+   * 为什么要这一条：工具栏是按 `editorUiState` 渲染出来的视图，读它回答的是「按钮长
+   * 什么样」；调用方（外部 Agent 与 MCP）真正需要的是「这份文档现在是什么格式」。
+   * 两者在工具栏被裁切、页签隐藏、或同一节流帧里连改两次时会分叉，所以状态必须来自
+   * editor 本身。
+   */
+  getFormatState: () => NarrativeEditorFormatState | null
+  /**
+   * 直接执行一个编辑器命令（白名单内的枚举），走 TipTap 的 chain 而不是点击 DOM。
+   *
+   * 为什么不再模拟点击：点击依赖工具栏此刻真的被渲染、按钮没有被禁用、菜单需要先
+   * 展开；而 chain 命令是编辑器唯一的事实来源，且不随 UI 结构变化。命令的作用范围
+   * 与用户点按钮时一致（当前选区）。
+   */
+  executeFormatCommand: (input: NarrativeEditorFormatCommand) => NarrativeEditorFormatCommandResult
+}
+
+/** 编辑器命令的枚举取值。工具栏按钮与下拉各对应其中一项。 */
+export type NarrativeEditorFormatCommand =
+  | { command: 'toggleMark'; mark: NarrativeEditorFormatMark }
+  | { command: 'setBlock'; block: 'paragraph' }
+  | { command: 'setBlock'; block: 'heading'; level: 1 | 2 | 3 | 4 | 5 | 6 }
+  | { command: 'setAlign'; align: 'left' | 'center' | 'right' }
+  | { command: 'toggleList'; list: 'bulletList' | 'orderedList' }
+  | { command: 'setBlockquote' }
+  | { command: 'clearFormatting' }
+  | { command: 'setFontSize'; value: string | null }
+  | { command: 'setFontFamily'; value: string | null }
+  | { command: 'setTextColor'; value: string | null }
+  | { command: 'setBackgroundColor'; value: string | null }
+  | { command: 'undo' }
+  | { command: 'redo' }
+
+/** 可切换的行内 mark。与工具栏的按钮一一对应。 */
+export type NarrativeEditorFormatMark =
+  | 'bold'
+  | 'italic'
+  | 'underline'
+  | 'strike'
+  | 'code'
+
+export interface NarrativeEditorFormatCommandResult {
+  ok: boolean
+  /** 失败原因：命令不适用于当前位置、AI 任务占用编辑器、参数非法。 */
+  reason?: string
+}
+
+/** 编辑器格式状态：全部来自 editor 的查询方法，不读 DOM。 */
+export interface NarrativeEditorFormatState {
+  /** 当前光标所在的块类型（paragraph / heading / bulletList / ...）。 */
+  blockType: string
+  /** 标题级别；正文为 null。 */
+  headingLevel: 1 | 2 | 3 | 4 | 5 | 6 | null
+  /** 生效的行内 mark，按 NarrativeEditorFormatMark 的顺序给出。 */
+  marks: NarrativeEditorFormatMark[]
+  align: 'left' | 'center' | 'right'
+  /** 行内样式值；未设置时为 null（而不是空串 —— 空串是「点过清除」的结果）。 */
+  fontSize: string | null
+  fontFamily: string | null
+  color: string | null
+  backgroundColor: string | null
+  /** 列表与引用这类整体块属性的状态。 */
+  inBulletList: boolean
+  inOrderedList: boolean
+  inBlockquote: boolean
+  /** 撤销栈是否还有内容（决定 undo / redo 命令是否可能生效）。 */
+  canUndo: boolean
+  canRedo: boolean
+  /** 与 getAutomationState 一致的可编辑标志。 */
+  editable: boolean
 }
 
 export interface NarrativeEditorAutomationKeyInput {
@@ -75,6 +148,17 @@ export interface ImageUploadResult {
   src: string
   alt?: string
   photoId?: string
+}
+
+/**
+ * 格式状态里 marks 的输出顺序：与工具栏从左到右一致，读起来稳定。
+ * `code` 是 NarrativeEditorFormatMark 的对外名字，对应 editor 的 inlineCode mark。
+ */
+const FORMAT_MARK_ORDER: readonly NarrativeEditorFormatMark[] = ['bold', 'italic', 'underline', 'strike', 'code']
+
+/** 空串与 undefined 统一成 null：让调用方只需判断「有没有设置过」。 */
+function nonEmpty(value: string | null | undefined): string | null {
+  return typeof value === 'string' && value.trim() ? value : null
 }
 
 interface UseEditorImperativeHandleOptions {
@@ -328,6 +412,137 @@ export function useEditorImperativeHandle({
     },
 
     focus: focusEditor,
+
+    getFormatState: () => {
+      if (!editor) return null
+      const { selection, doc, storedMarks } = editor.state
+      const activeMarks = storedMarks ?? selection.$from.marks()
+      const activeMarkNames = new Set(activeMarks.map((mark) => mark.type.name))
+      const pastedStyle = editor.getAttributes('pastedStyle') as {
+        color?: string | null
+        backgroundColor?: string | null
+        fontSize?: string | null
+        fontFamily?: string | null
+      }
+      const headingLevel = ([1, 2, 3, 4, 5, 6] as const)
+        .find((level) => editor.isActive('heading', { level })) ?? null
+      return {
+        blockType: selection.$from.parent.type.name,
+        headingLevel,
+        marks: FORMAT_MARK_ORDER.filter((mark) => (
+          // code 是 inlineCode mark 的对外名字。
+          activeMarkNames.has(mark === 'code' ? 'code' : mark)
+        )),
+        align: editor.isActive({ textAlign: 'center' })
+          ? 'center'
+          : editor.isActive({ textAlign: 'right' }) ? 'right' : 'left',
+        fontSize: nonEmpty(pastedStyle.fontSize),
+        fontFamily: nonEmpty(pastedStyle.fontFamily),
+        color: nonEmpty(pastedStyle.color),
+        backgroundColor: nonEmpty(pastedStyle.backgroundColor),
+        inBulletList: editor.isActive('bulletList'),
+        inOrderedList: editor.isActive('orderedList'),
+        inBlockquote: editor.isActive('blockquote'),
+        canUndo: editor.can().undo(),
+        canRedo: editor.can().redo(),
+        editable: editor.isEditable,
+      } satisfies NarrativeEditorFormatState
+    },
+
+    executeFormatCommand: (input: NarrativeEditorFormatCommand) => {
+      if (!editor) return { ok: false, reason: '编辑器尚未就绪' }
+      // 与工具栏按钮同样的门禁：AI 任务持锁时不许改文档。
+      if (isAiTaskLocked) return { ok: false, reason: '编辑器正被 AI 任务占用' }
+      if (!editor.isEditable) return { ok: false, reason: '当前文档是只读的' }
+
+      const chain = editor.chain().focus()
+      switch (input.command) {
+        case 'toggleMark': {
+          const toggle = {
+            bold: () => chain.toggleBold(),
+            italic: () => chain.toggleItalic(),
+            underline: () => chain.toggleUnderline(),
+            strike: () => chain.toggleStrike(),
+            code: () => chain.toggleCode(),
+          }[input.mark]
+          if (!toggle()) return { ok: false, reason: `${input.mark} 不适用于当前选区` }
+          break
+        }
+        case 'setBlock': {
+          const applied = input.block === 'heading'
+            ? chain.setHeading({ level: input.level }).run()
+            : chain.setParagraph().run()
+          if (!applied) return { ok: false, reason: '当前选区不能改成该块类型' }
+          break
+        }
+        case 'setAlign': {
+          if (!chain.setTextAlign(input.align).run()) {
+            return { ok: false, reason: '当前块不支持对齐设置' }
+          }
+          break
+        }
+        case 'toggleList': {
+          const applied = input.list === 'bulletList'
+            ? chain.toggleBulletList().run()
+            : chain.toggleOrderedList().run()
+          if (!applied) return { ok: false, reason: '当前选区不能转成该列表' }
+          break
+        }
+        case 'setBlockquote': {
+          if (!chain.toggleBlockquote().run()) return { ok: false, reason: '当前块不能转成引用' }
+          break
+        }
+        case 'clearFormatting': {
+          if (!chain.clearNodes().unsetAllMarks().run()) {
+            return { ok: false, reason: '当前选区没有可清除的格式' }
+          }
+          break
+        }
+        case 'setFontSize': {
+          if (input.value === null) chain.unsetFontSize()
+          else chain.setFontSize(input.value)
+          if (!chain.run()) return { ok: false, reason: '字号设置未生效' }
+          break
+        }
+        case 'setFontFamily': {
+          if (input.value === null) chain.unsetFontFamily()
+          else chain.setFontFamily(input.value)
+          if (!chain.run()) return { ok: false, reason: '字体设置未生效' }
+          break
+        }
+        case 'setTextColor': {
+          const color = input.value === null ? '' : normalizeHexColor(input.value)
+          if (color === null) return { ok: false, reason: `无效的颜色值: ${input.value}` }
+          if (color) chain.setTextColor(color)
+          else chain.unsetTextColor()
+          if (!chain.run()) return { ok: false, reason: '文字颜色设置未生效' }
+          break
+        }
+        case 'setBackgroundColor': {
+          const color = input.value === null ? '' : normalizeHexColor(input.value)
+          if (color === null) return { ok: false, reason: `无效的颜色值: ${input.value}` }
+          if (color) chain.setBackgroundColor(color)
+          else chain.unsetBackgroundColor()
+          if (!chain.run()) return { ok: false, reason: '底色设置未生效' }
+          break
+        }
+        case 'undo': {
+          if (!chain.undo().run()) return { ok: false, reason: '没有可撤销的操作' }
+          break
+        }
+        case 'redo': {
+          if (!chain.redo().run()) return { ok: false, reason: '没有可重做的操作' }
+          break
+        }
+        default: {
+          // 穷尽检查：新增命令忘了实现时这里会编译失败。
+          const unreachable: never = input
+          return { ok: false, reason: `未知的编辑器命令: ${JSON.stringify(unreachable)}` }
+        }
+      }
+      return { ok: true }
+    },
+
     getAutomationState: () => {
       if (!editor) return null
       const { selection } = editor.state

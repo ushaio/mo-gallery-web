@@ -1,6 +1,17 @@
 export { MilkdownEditor } from './MilkdownEditor'
 export { EditorContentPrompt } from './EditorContentPrompt'
-export type { MilkdownEditorHandle, MilkdownEditorProps, MilkdownAiProvider, MilkdownAiPolish, MilkdownTextEdit, MilkdownTextEditResult } from './MilkdownEditor'
+export type { MilkdownEditorHandle, MilkdownEditorProps, MilkdownAiProvider, MilkdownAiPolish, MilkdownTextEdit, MilkdownTextEditResult, MilkdownKeyInput } from './MilkdownEditor'
+export {
+  applyMilkdownFormatCommand,
+  getMilkdownFormatState,
+  readListMetrics,
+} from './editor-commands'
+export type {
+  MilkdownFormatCommand,
+  MilkdownFormatMark,
+  MilkdownFormatResult,
+  MilkdownFormatState,
+} from './editor-commands'
 export { locateText, replaceRangeWithMarkdown, replaceDocumentWithMarkdown, hasNonTextNodeInside } from './text-edit'
 export type { TextRange, LocateResult } from './text-edit'
 export { buildBlockDiff, splitContentBlocks, diffSequence } from './render-diff'

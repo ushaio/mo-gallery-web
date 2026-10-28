@@ -93,7 +93,14 @@ import {
 } from './tiptap-editor/editor-command-registry'
 import { BackgroundColorPicker, TextColorPicker, useColorPickerMenu } from './tiptap-editor/ColorPickerMenu'
 import { useNarrativeEditor } from './tiptap-editor/useNarrativeEditor'
-import { useEditorImperativeHandle, type NarrativeTipTapEditorHandle } from './tiptap-editor/useEditorImperativeHandle'
+import {
+  useEditorImperativeHandle,
+  type NarrativeEditorFormatCommand,
+  type NarrativeEditorFormatCommandResult,
+  type NarrativeEditorFormatMark,
+  type NarrativeEditorFormatState,
+  type NarrativeTipTapEditorHandle,
+} from './tiptap-editor/useEditorImperativeHandle'
 import {
   createNarrativeAiTask,
   createNarrativeAiTaskLock,
@@ -140,7 +147,13 @@ export interface NarrativeTipTapEditorProps {
   }
 }
 
-export type { NarrativeTipTapEditorHandle }
+export type {
+  NarrativeEditorFormatCommand,
+  NarrativeEditorFormatCommandResult,
+  NarrativeEditorFormatMark,
+  NarrativeEditorFormatState,
+  NarrativeTipTapEditorHandle,
+}
 
 type BubbleMenuShouldShow = NonNullable<React.ComponentProps<typeof BubbleMenu>['shouldShow']>
 type FloatingMenuShouldShow = NonNullable<React.ComponentProps<typeof FloatingMenu>['shouldShow']>

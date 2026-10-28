@@ -6,7 +6,7 @@
     "commit": "d607144634ab6b4686526ae91f566685a47d671d",
     "dirty": true
   },
-  "syncedAt": "2026-10-27T13:54:00.321Z",
+  "syncedAt": "2026-10-28T10:09:32.665Z",
   "packages": {
     "admin-console": {
       "hash": "sha256:890018a5fafaf3aa708d184514563b2c4d1f5d5bdcd5d8aee40b42fba6625ae4",
@@ -29,8 +29,8 @@
       "files": 7
     },
     "milkdown": {
-      "hash": "sha256:370ee649e4afb722e1a6e96311d8367eed71e82ecbff9c21d55a3b1706cb986c",
-      "files": 32
+      "hash": "sha256:cc4ef865dc1ab79e208adfc1f3ba56e06f2384a3bc4eb4207753527202dcd60d",
+      "files": 33
     },
     "mo-editor": {
       "hash": "sha256:f6830c74c8b60c808745e086a793b630ffd3df3f686c910968dc60bfcc8b7a97",
@@ -41,7 +41,7 @@
       "files": 19
     },
     "tiptap-editor": {
-      "hash": "sha256:40beb83d569711c2b2f979de8e7e4f3b490f9162fd069c329f84d3416555ab44",
+      "hash": "sha256:233f71ece18705adbfa4956c8598a8b3690ae5c27db659fe769f1cd991a0e583",
       "files": 49
     }
   }
