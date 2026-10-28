@@ -605,14 +605,47 @@ export function UploadTab({
     const nextHashMap = new Map(fileHashMap)
     hashResults.forEach((hash, id) => nextHashMap.set(id, hash))
     setFileHashMap(nextHashMap)
-    
+
+    // 列表内按内容哈希去重：name+size+mtime 认不出「改名/复制」出来的同一张照片，
+    // 哈希能。字节相同只保留最早进列表的那一条（已在列表里的先占位），否则点一次
+    // 上传就会把同一张照片传两遍。
+    const keeperByHash = new Map<string, string>()
+    fileHashMap.forEach((hash, id) => { if (hash && !keeperByHash.has(hash)) keeperByHash.set(hash, id) })
+    const duplicatesInList = new Set<string>()
+    for (const file of files) {
+      const hash = nextHashMap.get(file.id)
+      if (!hash) continue
+      const keeper = keeperByHash.get(hash)
+      if (keeper && keeper !== file.id) {
+        duplicatesInList.add(file.id)
+        continue
+      }
+      keeperByHash.set(hash, file.id)
+    }
+    const remainingFiles = files.filter(f => !duplicatesInList.has(f.id))
+    if (duplicatesInList.size > 0) {
+      setUploadFiles(prev => prev.filter(f => !duplicatesInList.has(f.id)))
+      setSelectedIds(prev => {
+        const next = new Set(prev)
+        duplicatesInList.forEach(id => next.delete(id))
+        return next
+      })
+      setDuplicateInfos(prev => prev.filter(d => !duplicatesInList.has(d.fileId)))
+      setFileHashMap(prev => {
+        const next = new Map(prev)
+        duplicatesInList.forEach(id => next.delete(id))
+        return next
+      })
+      notify(t('admin.duplicate_files_ignored') || '部分重复的文件已忽略', 'info')
+    }
+
     setDuplicateProgress({ current: files.length, total: files.length })
-    
-    const hashes = files
+
+    const hashes = remainingFiles
       .map(f => nextHashMap.get(f.id))
       .filter((hash): hash is string => Boolean(hash))
-    
-    const fileIdSet = new Set(files.map(f => f.id))
+
+    const fileIdSet = new Set(remainingFiles.map(f => f.id))
     
     if (hashes.length > 0) {
       try {
@@ -620,7 +653,7 @@ export function UploadTab({
         const newDuplicates: DuplicateInfo[] = []
         
         if (result.hasDuplicates) {
-          for (const file of files) {
+          for (const file of remainingFiles) {
             const hash = nextHashMap.get(file.id)
             if (!hash) continue
             const existing = result.duplicates[hash]
@@ -670,10 +703,18 @@ export function UploadTab({
     const validFiles = imageFiles.filter(f => f.size <= MAX_FRONTEND_SIZE)
     if (!validFiles.length) return
 
+    // 同一批里也要去重：一次选中两份同名同尺寸同 mtime 的文件（同一张照片选两次、
+    // 或把副本一起拖进来）时，只比对「已在列表里的」是挡不住的，因此边收边把键
+    // 写回集合，同一批里重复的同样只留第一条。
     const existingFileKeys = new Set(uploadFiles.map(f => `${f.file.name}::${f.file.size}::${f.file.lastModified}`))
 
     const newItems = validFiles
-      .filter(f => !existingFileKeys.has(`${f.name}::${f.size}::${f.lastModified}`))
+      .filter(f => {
+        const key = `${f.name}::${f.size}::${f.lastModified}`
+        if (existingFileKeys.has(key)) return false
+        existingFileKeys.add(key)
+        return true
+      })
       .map(f => ({ id: crypto.randomUUID(), file: f }))
 
     if (newItems.length === 0) {
@@ -882,9 +923,9 @@ export function UploadTab({
         </AdminButton>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto gap-8 px-8 pb-8 pt-6 lg:grid-cols-12 lg:gap-12">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto gap-8 px-8 pb-8 pt-6 lg:grid-cols-12 lg:gap-12 lg:overflow-hidden">
         {/* Left Panel - Settings */}
-        <div className="lg:col-span-4">
+        <div className="lg:col-span-4 lg:min-h-0 lg:overflow-y-auto">
           <PhotoUploadParams
             mode={uploadType}
             token={token}
@@ -904,19 +945,19 @@ export function UploadTab({
         </div>
 
         {/* Right Panel - Files */}
-        <div className="lg:col-span-8">
+        <div className="lg:col-span-8 lg:flex lg:min-h-0 lg:flex-col">
           <div
             onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
-            className={`min-h-[600px] border-2 border-dashed transition-all ${
+            className={`flex min-h-[600px] flex-col border-2 border-dashed transition-all lg:min-h-0 lg:flex-1 ${
               isDragging ? 'border-primary bg-primary/5' : 'border-border/50 bg-muted/10'
             }`}
           >
             {uploadFiles.length ? (
-              <div className="p-6">
+              <div className="flex min-h-0 flex-1 flex-col p-6">
                 {/* Toolbar */}
-                <div className="flex items-center justify-between mb-6 pb-4 border-b border-border/50">
+                <div className="flex items-center justify-between shrink-0 mb-6 pb-4 border-b border-border/50">
                   <div className="flex items-center gap-4">
                     <input
                       type="checkbox"
@@ -989,7 +1030,7 @@ export function UploadTab({
                 </div>
 
                 {/* File List */}
-                <div className="space-y-1" onDragEnd={handleDragEnd}>
+                <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1" onDragEnd={handleDragEnd}>
                   {uploadFiles.map((item, index) => (
                     <DraggableFileItem
                       key={item.id}
@@ -1013,7 +1054,7 @@ export function UploadTab({
                 </div>
               </div>
             ) : (
-              <div className="h-full min-h-[600px] flex flex-col items-center justify-center text-muted-foreground p-8">
+              <div className="h-full min-h-[600px] flex flex-col items-center justify-center text-muted-foreground p-8 lg:min-h-0">
                 <Upload className="w-16 h-16 mb-6 opacity-10" />
                 <p className="text-sm font-medium mb-2">{t('admin.drop_here')}</p>
                 <p className="text-xs text-muted-foreground/60 mb-8">{t('admin.support_types')}</p>
