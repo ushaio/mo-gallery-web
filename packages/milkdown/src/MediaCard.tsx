@@ -181,6 +181,24 @@ export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, reso
     if (next && (alignToggleRef.current?.contains(next) || alignPanelRef.current?.contains(next))) return
     setAlignOpen(false)
   }
+  /**
+   * 点「这一簇之外」就收起 —— 光靠 `onBlur` 收不回来。
+   *
+   * ProseMirror 在编辑区 mousedown 里会 `preventDefault()` 保住编辑器焦点，于是点正文时
+   * 对齐按钮**根本不会 blur**：摊开的那一排会一直挂在那儿，看起来像「点文本也把对齐方式点出来了」。
+   * 这里在 document 捕获阶段盯 pointerdown（比编辑器的 mousedown 更早、且不依赖焦点），
+   * 只要落点不在主按钮与这排选择之内就收起。
+   */
+  useEffect(() => {
+    if (!alignOpen) return
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null
+      if (target && (alignToggleRef.current?.contains(target) || alignPanelRef.current?.contains(target))) return
+      setAlignOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown, true)
+    return () => document.removeEventListener('pointerdown', onPointerDown, true)
+  }, [alignOpen])
   const alignControl = onAlignChange && media.kind === 'image' && <button
     ref={alignToggleRef}
     type="button"

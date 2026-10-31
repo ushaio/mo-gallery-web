@@ -13,7 +13,27 @@ export const mediaDirective = $remark('mo-media-directive', () => remarkDirectiv
 export const mediaSchema = $node('media_card', () => ({
   group: 'block',
   atom: true,
-  draggable: true,
+  /**
+   * 整卡**不开** HTML5 原生拖拽。
+   *
+   * WebView2 的合成宿主（`CoreWebView2CompositionController`）把页面里的原生拖拽实现成宿主
+   * 进程里的 OLE `DoDragDrop` 会话：起拖那一刻鼠标捕获归 OLE，之后「松手」不再作为
+   * `WM_LBUTTONUP` 回到应用窗口。只要这次会话收不了尾，整窗就再也收不到鼠标消息——点不动、
+   * 但渲染进程照旧活着（不烧 CPU、CDP 能求值）。
+   *
+   * 这正是「点图片卡 / 点对齐方式后卡死」的表现：卡住时页面里那串元素（`IMG` 及其祖先）一直
+   * 带着 `:active`，说明浏览器认为左键还按着，于是之后所有 click 都发不出来。媒体卡的浮层按钮
+   * 和四角缩放手柄全在 NodeView 的 dom 内部，按下去稍微一动就会起一次整卡拖拽，所以「在文本和
+   * 图片之间来回切换」迟早会踩中。
+   *
+   * 注意：**光靠这个 `draggable: false` 拦不住**。节点被 NodeSelection 选中时 ProseMirror 会
+   * 自己发 `dragstart` 并写 `text/html`，与这个属性无关；真正的闸门是下面 `dragstart` 监听里
+   * 的 `preventDefault()`。
+   *
+   * 搬运整张卡改走块手柄（`⠿`，Crepe BlockEdit 自带）；拼图格的拖拽不受影响（`MediaCard` 里
+   * 每格自己带 `draggable`，见 `media-merge.ts`）。
+   */
+  draggable: false,
   isolating: true,
   attrs: { media: { default: { kind: 'image' } } },
   parseDOM: [{
@@ -180,8 +200,23 @@ export function createMediaView(getOptions: () => MediaViewOptions, refreshers: 
         event.preventDefault()
         return
       }
+      /**
+       * 整卡拖拽一律掐掉。
+       *
+       * 只把 schema 的 `draggable` 关掉是不够的：节点一旦被 NodeSelection 选中（点一下卡片就是
+       * 这个状态），ProseMirror 会自己发一次 `dragstart` 并往 dataTransfer 里写 `text/html`，
+       * 完全绕开 `draggable` 属性。而在 WebView2 的合成宿主下，任何原生拖拽都会变成宿主进程里的
+       * OLE `DoDragDrop` 会话；会话收不了尾时整窗就再也收不到鼠标消息——页面里那串元素会一直带着
+       * `:active`，之后所有 click 都发不出来，而渲染进程照旧活着（不烧 CPU、CDP 能求值）。
+       *
+       * 所以这里必须无条件拦：除了拼图格（下面那条分支，自己的 payload 与落点语义）之外，
+       * 任何从媒体卡起的拖拽都不放行。搬运整张卡改走块手柄（`⠿`，Crepe BlockEdit 自带）。
+       */
       const tile = tileUnderPointer(dom, event)
-      if (!tile) return
+      if (!tile) {
+        event.preventDefault()
+        return
+      }
       const pos = getPos()
       const image = normalizeMedia(node.attrs.media).images?.[tile.index]
       const key = image ? galleryEntryKey(image) : ''

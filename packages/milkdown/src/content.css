@@ -196,7 +196,10 @@ figure.milkdown-media.milkdown-media-image[data-media-align="right"] { margin-le
 .milkdown-media-actions button:focus-visible, .milkdown-media a:focus-visible { outline: 2px solid var(--primary, #2563eb); outline-offset: -2px; }
 /* 一排按钮（编辑器里是对齐入口 + 编辑 / 移除），默认的块级排布会把它们竖着摞起来 */
 .milkdown-media-overlay { position: absolute; top: 10px; right: 10px; z-index: 2; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 8px; background: var(--card, #fff); border: 1px solid var(--border, #ddd); box-shadow: 0 2px 12px #0001; opacity: 0; transition: opacity 120ms ease; }
-.milkdown-media:hover .milkdown-media-overlay, .milkdown-media:focus-within .milkdown-media-overlay, .ProseMirror-selectednode .milkdown-media-overlay { opacity: 1; }
+/* 浮层只在**卡片被选中**（点过卡片）或内部已有焦点时出现，鼠标划过不弹。
+   带 `:hover` 时指针扫过正文就会一路闪出按钮，点文本时只要指针蹭到卡片边缘也会冒出来，
+   与「点了卡片才有操作」的直觉相反。键盘用户仍能靠 `:focus-within` 拿到它。 */
+.milkdown-media:focus-within .milkdown-media-overlay, .ProseMirror-selectednode .milkdown-media-overlay { opacity: 1; }
 @media (hover: none) { .milkdown-media-overlay { opacity: 1; } }
 .milkdown-spin { animation: milkdown-spin 1s linear infinite; }
 @keyframes milkdown-spin { to { transform: rotate(360deg); } }

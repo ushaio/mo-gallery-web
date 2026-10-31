@@ -226,7 +226,8 @@
 .milkdown-editor .milkdown-media-resize-ne { top: 6px; right: 6px; cursor: nesw-resize; }
 .milkdown-editor .milkdown-media-resize-sw { bottom: 6px; left: 6px; cursor: nesw-resize; }
 .milkdown-editor .milkdown-media-resize-se { bottom: 6px; right: 6px; cursor: nwse-resize; }
-.milkdown-editor .milkdown-media:hover .milkdown-media-resize,
+/* 与浮层同一套显隐：点过卡片（选中）或内部有焦点才出现，划过不弹 —— 免得指针扫过正文时
+   每张图都亮出四个角柄。 */
 .milkdown-editor .milkdown-media:focus-within .milkdown-media-resize,
 .milkdown-editor .ProseMirror-selectednode .milkdown-media-resize { opacity: 1; }
 /* 触屏没有悬浮这回事：手柄常显，否则永远摸不到 */
