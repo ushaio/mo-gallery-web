@@ -44,7 +44,7 @@
     "class-variance-authority": "^0.7.0",
     "exifreader": "^4.33.1",
     "framer-motion": "^12.23.26",
-    "hono": "^4.13.7",
+    "hono": "^4.13.16",
     "isomorphic-dompurify": "^2.35.0",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.562.0",
