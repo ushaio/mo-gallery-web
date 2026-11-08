@@ -20,6 +20,11 @@ export type CompressionOutputFormat = 'avif' | 'webp'
 /** 缩略图常量（所有缩略图生成路径共用） */
 export const THUMBNAIL_SIZE = 800
 export const THUMBNAIL_AVIF_QUALITY = 72
+/**
+ * WebP 缩略图质量。取 82 是为了和 AVIF 的 72 在观感上对齐：同尺寸下 WebP 文件略大
+ * （约 1.3–1.6×），但解码明显更快，网格滚动时更稳。
+ */
+export const THUMBNAIL_WEBP_QUALITY = 82
 
 /** 服务端 AVIF 压缩常量 */
 export const SERVER_AVIF_DEFAULT_QUALITY = 82

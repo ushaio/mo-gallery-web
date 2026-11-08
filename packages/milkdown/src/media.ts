@@ -187,9 +187,27 @@ function metaText(value: unknown, max: number): string {
 
 export function normalizeMedia(value: unknown): MediaCardData {
   const input = record(value)
-  const kind = input.kind === 'upload' || MEDIA_KINDS.includes(input.kind as MediaKind)
+  // 没写 kind 的指令不能一律当链接卡：模型偶尔会吐 `::media{src="" photoId=""}` 这种空图位，
+  // 当成 link 渲染就是一排「链接不可用」。没有地址、也没有任何链接元信息的，按图片空位处理；
+  // 有地址或元信息的（早期 `::media{src="https://…"}`）仍按链接卡理解。
+  const hasAddress = Boolean(
+    text(input.src).trim()
+    || text(input.photoId).trim()
+    || text(input.uploadId).trim()
+    || (Array.isArray(input.images) && input.images.length > 0)
+    || input.embed,
+  )
+  const hasLinkMeta = Boolean(
+    text(input.title).trim()
+    || text(input.thumbnail).trim()
+    || text(input.siteName).trim()
+    || text(input.description).trim()
+    || text(input.icon).trim(),
+  )
+  const declaredKind = input.kind === 'upload' || MEDIA_KINDS.includes(input.kind as MediaKind)
     ? input.kind as MediaCardData['kind']
-    : 'link'
+    : hasAddress || hasLinkMeta ? 'link' : 'image'
+  const kind = declaredKind
   const supportsEmbed = kind === 'audio' || kind === 'video' || kind === 'link'
   const parsed = supportsEmbed ? parseMediaEmbed(text(input.src)) : null
   const embed = supportsEmbed ? parsed?.embed ?? normalizeMediaEmbed(input.embed) : undefined

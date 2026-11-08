@@ -27,5 +27,6 @@ export {
   SERVER_SHARP_TIMEOUT_MS,
   THUMBNAIL_AVIF_QUALITY,
   THUMBNAIL_SIZE,
+  THUMBNAIL_WEBP_QUALITY,
 } from './types'
 export type { CompressionOutputFormat, ExifData } from './types'

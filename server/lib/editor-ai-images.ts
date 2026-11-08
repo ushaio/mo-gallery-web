@@ -64,7 +64,8 @@ type MessageImageTarget = {
 }
 
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024
-const THUMBNAIL_CONTENT_TYPE = 'image/avif'
+const THUMBNAIL_CONTENT_TYPE = 'image/webp'
+const THUMBNAIL_EXTENSION = '.webp'
 const SUPPORTED_CONTENT_TYPES = new Set([
   'image/jpeg',
   'image/png',
@@ -226,7 +227,7 @@ export async function saveEditorAiMessageImageCore(
   const filename = `${randomName}${contentTypeExtension(contentType)}`
   const uploadResult = await storage.upload(
     { buffer: source.buffer, filename, path: 'photos', contentType },
-    { buffer: thumbnailBuffer, filename: `thumb-${randomName}.avif`, path: 'photos', contentType: THUMBNAIL_CONTENT_TYPE },
+    { buffer: thumbnailBuffer, filename: `thumb-${randomName}${THUMBNAIL_EXTENSION}`, path: 'photos', contentType: THUMBNAIL_CONTENT_TYPE },
   )
 
   try {
@@ -265,7 +266,8 @@ const productionDependencies: EditorAiImageSaverDependencies = {
     return { provider: config.provider, storage: StorageProviderFactory.create(config) }
   },
   loadRemoteImage: loadSafeRemoteImage,
-  inspectImage: (buffer) => getMetadataAndThumbnail(buffer, { generateThumbnail: true }),
+  inspectImage: (buffer) =>
+    getMetadataAndThumbnail(buffer, { generateThumbnail: true, thumbnailFormat: 'webp' }),
   randomName: () => randomBytes(16).toString('hex'),
   transaction: (work) => db.$transaction(async (transaction) => work({
     createPhoto: (data) => transaction.photo.create({

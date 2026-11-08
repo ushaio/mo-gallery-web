@@ -5,9 +5,9 @@
  * costs 300-400ms of decode when scrolled into view and freezes scrolling).
  *
  * For every photo with thumbPath missing:
- *   download original -> 800px AVIF q72 (same recipe as
- *   @mo-gallery/image-pipeline/node generateThumbnailBuffer) -> upload as
- *   thumb-<name>.avif next to the original -> update Photo.thumbPath.
+ *   download original -> 800px WebP q82 (same recipe as
+ *   @mo-gallery/image-pipeline/node generateThumbnailBuffer(buffer, 'webp')) ->
+ *   upload as thumb-<name>.webp next to the original -> update Photo.thumbPath.
  *
  * Originals are never modified. Rollback: clear thumbPath and delete the
  * thumb-* objects (the script prints every write it makes).
@@ -32,7 +32,7 @@ import { PrismaClient } from '../src/generated/prisma/client'
 const APPLY = process.argv.includes('--apply')
 const CONCURRENCY = 3
 const THUMBNAIL_SIZE = 800
-const THUMBNAIL_AVIF_QUALITY = 72
+const THUMBNAIL_WEBP_QUALITY = 82
 
 // dotenv is not a direct dependency; parse .env the simple way.
 function loadEnv() {
@@ -72,7 +72,7 @@ function normalizeKeyCandidate(value: string | null | undefined): string | undef
 
 function buildThumbnailKey(originalKey: string): string {
   const parsed = posix.parse(originalKey)
-  const filename = `thumb-${parsed.name}.avif`
+  const filename = `thumb-${parsed.name}.webp`
   return parsed.dir ? `${parsed.dir}/${filename}` : filename
 }
 
@@ -190,13 +190,13 @@ async function main() {
       const thumb = await sharp(original)
         .rotate()
         .resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, { fit: 'inside', withoutEnlargement: true })
-        .avif({ quality: THUMBNAIL_AVIF_QUALITY })
+        .webp({ quality: THUMBNAIL_WEBP_QUALITY })
         .toBuffer()
       await target.client.send(new PutObjectCommand({
         Bucket: target.bucket,
         Key: thumbKey,
         Body: thumb,
-        ContentType: 'image/avif',
+        ContentType: 'image/webp',
       }))
       await prisma.photo.update({ where: { id: photo.id }, data: { thumbPath: thumbKey } })
       ok++

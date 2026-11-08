@@ -182,7 +182,7 @@ async function testOwnedRemoteImageSavesUsingResolvedMessageId() {
   ])
   assert.deepEqual(uploads, [
     { filename: 'fixed-name.png', size: Buffer.byteLength('remote-image') },
-    { filename: 'thumb-fixed-name.avif', size: Buffer.byteLength('thumbnail') },
+    { filename: 'thumb-fixed-name.webp', size: Buffer.byteLength('thumbnail') },
   ])
   assert.deepEqual(metadataUpdates, [{
     messageId: 'resolved-message-id',

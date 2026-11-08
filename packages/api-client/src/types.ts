@@ -274,6 +274,12 @@ export interface EditorAiConversationDto {
   summary?: string
   lastModel?: string
   systemPrompt?: string
+  /**
+   * 这条对话用的运行时种类：moagent / dsh / mastra / claude-code / codex /
+   * opencode。空串 / 未设＝未记录（引入字段之前的老对话）。
+   * 只记录来源；每一轮实际用谁仍由请求里的 agentId / 默认 Agent 决定。
+   */
+  agentKind?: string
   createdAt: string
   updatedAt: string
 }
@@ -339,11 +345,15 @@ export interface EditorAiConversationCreateInput {
   scopeId: string
   title?: string
   systemPrompt?: string
+  /** 创建时就记录来源种类（分支继承等）；留空则等第一轮发送时写入。 */
+  agentKind?: string
 }
 
 export interface EditorAiConversationUpdateInput {
   title?: string
   systemPrompt?: string | null
+  /** nil / 未传＝这次不改；空串＝清掉记录。 */
+  agentKind?: string | null
 }
 
 export interface EditorAiConversationsQuery {

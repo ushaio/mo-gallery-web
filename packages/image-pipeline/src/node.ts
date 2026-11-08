@@ -12,6 +12,7 @@ import {
   SERVER_SHARP_TIMEOUT_MS,
   THUMBNAIL_AVIF_QUALITY,
   THUMBNAIL_SIZE,
+  THUMBNAIL_WEBP_QUALITY,
   type CompressionOutputFormat,
   type ExifData,
 } from './types'
@@ -429,18 +430,32 @@ export async function extractDominantColors(
 // ---------------------------------------------------------------------------
 
 /**
- * Generate an 800px AVIF (quality 72) thumbnail from an image buffer.
- * Used by the main upload, reupload, and generate-thumbnail endpoints.
+ * 按目标格式编码缩略图。AVIF 体积更小、WebP 解码更快；调用方决定用哪种，
+ * 默认 AVIF 以保持自部署上传（mo-gallery-web）的既有行为不变。
  */
-export async function generateThumbnailBuffer(buffer: Buffer): Promise<Buffer> {
-  return sharp(buffer)
-    .rotate()
-    .resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, {
-      fit: 'inside',
-      withoutEnlargement: true,
-    })
-    .avif({ quality: THUMBNAIL_AVIF_QUALITY })
-    .toBuffer()
+function encodeThumbnail(
+  pipeline: ReturnType<typeof sharp>,
+  format: CompressionOutputFormat,
+): ReturnType<typeof sharp> {
+  return format === 'webp'
+    ? pipeline.webp({ quality: THUMBNAIL_WEBP_QUALITY })
+    : pipeline.avif({ quality: THUMBNAIL_AVIF_QUALITY })
+}
+
+/**
+ * Generate an 800px thumbnail (AVIF by default, WebP on request) from an
+ * image buffer. Used by the main upload, reupload, and generate-thumbnail
+ * endpoints, plus the cloud thumbnail backfill script.
+ */
+export async function generateThumbnailBuffer(
+  buffer: Buffer,
+  format: CompressionOutputFormat = 'avif',
+): Promise<Buffer> {
+  const resized = sharp(buffer).rotate().resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, {
+    fit: 'inside',
+    withoutEnlargement: true,
+  })
+  return encodeThumbnail(resized, format).toBuffer()
 }
 
 /**
@@ -449,18 +464,19 @@ export async function generateThumbnailBuffer(buffer: Buffer): Promise<Buffer> {
  */
 export async function getMetadataAndThumbnail(
   buffer: Buffer,
-  options: { generateThumbnail: boolean },
+  options: { generateThumbnail: boolean; thumbnailFormat?: CompressionOutputFormat },
 ): Promise<{ metadata: Metadata; thumbnailBuffer: Buffer | null }> {
   const sharpInstance = sharp(buffer)
   const [metadata, thumbnailBuffer] = await Promise.all([
     sharpInstance.metadata(),
     options.generateThumbnail
-      ? sharpInstance
-          .clone()
-          .rotate()
-          .resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, { fit: 'inside', withoutEnlargement: true })
-          .avif({ quality: THUMBNAIL_AVIF_QUALITY })
-          .toBuffer()
+      ? encodeThumbnail(
+          sharpInstance
+            .clone()
+            .rotate()
+            .resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, { fit: 'inside', withoutEnlargement: true }),
+          options.thumbnailFormat ?? 'avif',
+        ).toBuffer()
       : Promise.resolve(null),
   ])
   return { metadata, thumbnailBuffer }

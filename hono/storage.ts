@@ -14,11 +14,13 @@ import {
 import path from 'path'
 
 const storage = new Hono<{ Variables: AuthVariables }>()
-const THUMBNAIL_EXTENSION = '.avif'
+// 缩略图固定 WebP；2026-11 之前生成的老对象仍是 .avif，删除时要能兜住。
+const THUMBNAIL_EXTENSION = '.webp'
+const LEGACY_THUMBNAIL_EXTENSION = '.avif'
 
-function buildThumbnailKey(originalKey: string): string {
+function buildThumbnailKey(originalKey: string, extension = THUMBNAIL_EXTENSION): string {
   const parsed = path.posix.parse(originalKey)
-  const thumbnailFilename = `thumb-${parsed.name}${THUMBNAIL_EXTENSION}`
+  const thumbnailFilename = `thumb-${parsed.name}${extension}`
   return parsed.dir ? `${parsed.dir}/${thumbnailFilename}` : thumbnailFilename
 }
 
@@ -297,8 +299,14 @@ storage.post('/admin/storage/cleanup', async (c) => {
 
   for (const key of keys) {
     try {
-      const thumbKey = buildThumbnailKey(key)
-      await storageProvider.delete(key, thumbKey)
+      try {
+        await storageProvider.delete(key, buildThumbnailKey(key))
+      } catch {
+        // 这里的 key 来自扫描结果，没有 Photo 行可查 thumbPath。老对象的缩略图
+        // 是 .avif（local/s3 删不存在的键不会报错，只有 GitHub 会抛），
+        // 因此失败时换回旧扩展名再试一次，避免整条删除被一个历史缩略图卡死。
+        await storageProvider.delete(key, buildThumbnailKey(key, LEGACY_THUMBNAIL_EXTENSION))
+      }
       deleted++
     } catch (error: unknown) {
       failed++

@@ -114,6 +114,14 @@ export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, reso
   const [alignOpen, setAlignOpen] = useState(false)
   const media = normalizeMedia(value)
   const zh = language === 'zh'
+  /**
+   * 完全空的图位：指令里根本没有地址（`::media{src="" photoId=""}`，模型留的占位）。
+   * 预览 / 发布侧没有内容可展示，直接不渲染 —— 否则正文里会多出一排「图片位置」方块；
+   * 编辑器里保留一个可见占位，用户才能选中并删掉它。
+   */
+  const emptyImageSlot = (media.kind === 'image' && !media.src && !media.photoId)
+    || (media.kind === 'gallery' && (media.images?.length ?? 0) === 0)
+  if (emptyImageSlot && !showUploadStatus) return null
   const resolve = (src = '', photoId?: string) => safeMediaUrl(resolveUrl?.(src, photoId) ?? src)
   const uploadPreview = (uploadId?: string) => uploadId ? resolveUploadPreview?.(uploadId) : undefined
   const src = resolve(media.src, media.photoId)
@@ -234,6 +242,9 @@ export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, reso
     // 拼图里的一格：没有 src 但有 uploadId ⇒ 这一格还没上传，按 uploadId 现取本地预览图
     const pendingId = !image.src && image.uploadId ? image.uploadId : ''
     const url = (pendingId ? uploadPreview(pendingId) : '') || resolve(image.src, image.photoId)
+    // 「指令里根本没写地址」和「写了地址但解析失败」不是一回事：前者只是一个空图位
+    // （模型留的占位、还没选照片），用中性文案；后者才是真的不可用。
+    const hasAddress = Boolean(pendingId || image.src || image.photoId)
     const picture = url
       ? <img
         src={url}
@@ -249,7 +260,9 @@ export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, reso
         // local pending-upload previews.
         draggable={false}
       />
-      : <span className="milkdown-media-empty"><ImageOff size={24} />{zh ? '图片暂不可用' : 'Image unavailable'}</span>
+      : hasAddress
+        ? <span className="milkdown-media-empty"><ImageOff size={24} />{zh ? '图片暂不可用' : 'Image unavailable'}</span>
+        : <span className="milkdown-media-empty"><ImagePlus size={24} />{zh ? '图片位置' : 'Image placeholder'}</span>
     const tagged = Boolean(pendingId) && showUploadStatus
     const tileClass = `milkdown-media-photo${tagged ? ' milkdown-media-photo-upload' : ''}`
     const tileStyle = media.kind === 'gallery' ? galleryTileStyle(index, media.images?.length ?? 0, media.layout) : undefined

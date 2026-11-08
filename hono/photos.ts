@@ -27,16 +27,22 @@ import path from 'path'
 import { revalidateAfterWrite, STATIC_PUBLIC_PATHS } from '~/server/lib/revalidate'
 
 const photos = new Hono<{ Variables: AuthVariables }>()
-const THUMBNAIL_EXTENSION = '.avif'
+// 缩略图统一 WebP：解码比 AVIF 快，滚动时更跟手；原图压缩格式仍由用户选择。
+// 2026-11 之前生成的缩略图是 .avif，读路径不受影响（thumbnailUrl 直接取
+// Photo.thumbPath），删除/改存储路径也一律按 thumbPath 的实际记录走，
+// 所以老对象不会被漏删，不需要额外兼容旧扩展名。
+const THUMBNAIL_EXTENSION = '.webp'
 const DEFAULT_AVIF_QUALITY = 82
 const AVIF_CONTENT_TYPE = 'image/avif'
+// 缩略图固定 WebP，与 image-pipeline 的 thumbnailFormat: 'webp' 对应。
+const THUMBNAIL_CONTENT_TYPE = 'image/webp'
 const DISPLAY_IMAGE_WIDTHS = [1280, 1920, 2560] as const
 const DISPLAY_IMAGE_CACHE_LIMIT = 12
 const displayImageCache = new Map<string, Promise<Buffer>>()
 
-function buildThumbnailFilename(filename: string): string {
+function buildThumbnailFilename(filename: string, extension = THUMBNAIL_EXTENSION): string {
   const parsed = path.parse(filename)
-  return `thumb-${parsed.name}${THUMBNAIL_EXTENSION}`
+  return `thumb-${parsed.name}${extension}`
 }
 
 function replaceFileExtension(filename: string, extension: string): string {
@@ -1020,7 +1026,10 @@ photos.post('/admin/photos', async (c) => {
       storageSourceId
         ? getStorageConfigBySourceId(storageSourceId)
         : getStorageConfig(storageProvider || undefined),
-      getMetadataAndThumbnail(buffer, { generateThumbnail: !reuseUploadedFileAsThumbnail }),
+      getMetadataAndThumbnail(buffer, {
+        generateThumbnail: !reuseUploadedFileAsThumbnail,
+        thumbnailFormat: 'webp',
+      }),
     ])
 
     console.info('[upload] image processed', {
@@ -1063,7 +1072,7 @@ photos.post('/admin/photos', async (c) => {
       thumbnailFilename,
       storagePath,
       storagePathFull,
-      thumbnailContentType: AVIF_CONTENT_TYPE,
+      thumbnailContentType: THUMBNAIL_CONTENT_TYPE,
     })
 
     // 二次去重：同一文件的并发上传可能同时通过请求开始时的检查
@@ -1293,10 +1302,11 @@ photos.delete('/admin/photos/:id', async (c) => {
         // Create storage provider instance
         const storage = StorageProviderFactory.create(storageConfig)
 
-        // Derive thumbnail key from the original path
+        // Derive thumbnail key from the photo (thumbPath 记录了实际扩展名，
+        // 老照片仍是 .avif；缺失时才按原图 key 派生当前格式)
         let thumbnailKey: string | undefined
         if (deleteThumbnail && photo.path) {
-          thumbnailKey = buildThumbnailKey(photo.path)
+          thumbnailKey = deriveThumbnailStorageKey(photo)
         }
 
         // Delete based on user selection
@@ -1411,7 +1421,7 @@ photos.post('/admin/photos/batch-delete', async (c) => {
             if (storage && (deleteOriginal || deleteThumbnail)) {
               let thumbnailKey: string | undefined
               if (deleteThumbnail && photo.path) {
-                thumbnailKey = buildThumbnailKey(photo.path)
+                thumbnailKey = deriveThumbnailStorageKey(photo)
               }
 
               const originalKey = deleteOriginal ? (photo.path || undefined) : undefined
@@ -2009,23 +2019,23 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
     if (uploadOriginal) {
       [exifData, { metadata, thumbnailBuffer }] = await Promise.all([
         extractExifData(buffer),
-        getMetadataAndThumbnail(buffer, { generateThumbnail: uploadThumb }),
+        getMetadataAndThumbnail(buffer, { generateThumbnail: uploadThumb, thumbnailFormat: 'webp' }),
       ])
       dominantColors = await extractDominantColors(buffer)
     } else if (uploadThumb) {
-      thumbnailBuffer = await generateThumbnailBuffer(buffer)
+      thumbnailBuffer = await generateThumbnailBuffer(buffer, 'webp')
     }
 
     let uploadResult
     if (uploadOriginal && uploadThumb && thumbnailBuffer) {
       uploadResult = await storage.upload(
         { buffer, filename, path: storagePath, contentType: file.type },
-        { buffer: thumbnailBuffer, filename: thumbnailFilename, path: storagePath, contentType: AVIF_CONTENT_TYPE }
+        { buffer: thumbnailBuffer, filename: thumbnailFilename, path: storagePath, contentType: THUMBNAIL_CONTENT_TYPE }
       )
     } else if (uploadOriginal) {
       uploadResult = await storage.upload({ buffer, filename, path: storagePath, contentType: file.type })
     } else if (uploadThumb && thumbnailBuffer) {
-      uploadResult = await storage.upload({ buffer: thumbnailBuffer, filename: thumbnailFilename, path: storagePath, contentType: AVIF_CONTENT_TYPE })
+      uploadResult = await storage.upload({ buffer: thumbnailBuffer, filename: thumbnailFilename, path: storagePath, contentType: THUMBNAIL_CONTENT_TYPE })
     }
 
     const updateData: Record<string, unknown> = {}
@@ -2131,7 +2141,7 @@ photos.post('/admin/photos/:id/generate-thumbnail', async (c) => {
     const buffer = await storage.download(photo.path || '')
     if (!buffer) return c.json({ error: 'Failed to download image' }, 500)
 
-    const thumbnailBuffer = await generateThumbnailBuffer(buffer)
+    const thumbnailBuffer = await generateThumbnailBuffer(buffer, 'webp')
 
     const storageKey = photo.path || ''
     const lastSlash = storageKey.lastIndexOf('/')
@@ -2143,7 +2153,7 @@ photos.post('/admin/photos/:id/generate-thumbnail', async (c) => {
       buffer: thumbnailBuffer,
       filename: thumbnailFilename,
       path: storagePath,
-      contentType: AVIF_CONTENT_TYPE,
+      contentType: THUMBNAIL_CONTENT_TYPE,
     })
 
     const updated = await db.photo.update({
