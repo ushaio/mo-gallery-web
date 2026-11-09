@@ -56,6 +56,10 @@ export interface PhotoDto {
   size?: number
   isFeatured: boolean
   showFlag?: boolean
+  /** 用户评分 0–5（0 = 未评分），与本地资源库对齐。 */
+  rating?: number
+  /** 颜色标记（'' | red | orange | yellow | green | blue | purple）。 */
+  colorLabel?: string
   createdAt: string
   updatedAt?: string
   storageProvider?: string

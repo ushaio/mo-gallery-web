@@ -27,6 +27,16 @@ import { AdminButton } from '@/components/admin/AdminButton'
 /** 「重新分析主色」入口暂时隐藏（服务端能力保留）；改回 true 即恢复按钮。 */
 const SHOW_REANALYZE_COLORS = false
 
+/** 颜色标记色板：与本地资源库 COLOR_SWATCHES 对齐（'' 表示无标记）。 */
+const COLOR_SWATCHES: Array<{ value: string; bg: string; label: string }> = [
+  { value: 'red', bg: '#EF4444', label: '红' },
+  { value: 'orange', bg: '#F97316', label: '橙' },
+  { value: 'yellow', bg: '#EAB308', label: '黄' },
+  { value: 'green', bg: '#22C55E', label: '绿' },
+  { value: 'blue', bg: '#3B82F6', label: '蓝' },
+  { value: 'purple', bg: '#A855F7', label: '紫' },
+]
+
 interface LibraryPhotoInfoSidebarProps {
   photo: PhotoDto | null
   token: string | null
@@ -69,6 +79,7 @@ export function LibraryPhotoInfoSidebar({
   onUnauthorized,
 }: LibraryPhotoInfoSidebarProps) {
   const [updatingVisibility, setUpdatingVisibility] = useState(false)
+  const [updatingMeta, setUpdatingMeta] = useState(false)
   const [reanalyzing, setReanalyzing] = useState(false)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const copyTimerRef = useRef<number | null>(null)
@@ -97,6 +108,23 @@ export function LibraryPhotoInfoSidebar({
       notify(error instanceof Error ? error.message : t('common.error'), 'error')
     } finally {
       setUpdatingVisibility(false)
+    }
+  }
+
+  const handleSaveMeta = async (patch: { rating?: number; colorLabel?: string }) => {
+    if (!photo || !token || updatingMeta) return
+    setUpdatingMeta(true)
+    try {
+      const updated = await updatePhoto({ token, id: photo.id, patch })
+      onSave?.(updated)
+    } catch (error) {
+      if (error instanceof ApiUnauthorizedError) {
+        onUnauthorized(error)
+        return
+      }
+      notify(error instanceof Error ? error.message : t('common.error'), 'error')
+    } finally {
+      setUpdatingMeta(false)
     }
   }
 
@@ -273,6 +301,56 @@ export function LibraryPhotoInfoSidebar({
                 >
                   {isVisible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4 text-primary" />}
                 </AdminButton>
+              </div>
+            </div>
+          </section>
+
+          <section className="border-t border-border pt-4">
+            <SectionLabel label="评分与颜色标记" />
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-muted-foreground">评分</span>
+                <div className="flex items-center gap-0.5" role="group" aria-label="评分">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      disabled={updatingMeta}
+                      aria-label={`评分 ${n}`}
+                      aria-pressed={(photo.rating ?? 0) >= n}
+                      title={`评分 ${n}`}
+                      onClick={() => void handleSaveMeta({ rating: (photo.rating ?? 0) === n ? 0 : n })}
+                      className="rounded p-0.5 text-muted-foreground/70 transition-transform hover:scale-110 disabled:opacity-50"
+                    >
+                      <Star className={`h-4 w-4 ${(photo.rating ?? 0) >= n ? 'fill-current text-primary' : ''}`} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-muted-foreground">颜色标记</span>
+                <div className="flex items-center gap-1.5" role="group" aria-label="颜色标记">
+                  {COLOR_SWATCHES.map((sw) => {
+                    const selected = (photo.colorLabel ?? '') === sw.value
+                    return (
+                      <button
+                        key={sw.value}
+                        type="button"
+                        disabled={updatingMeta}
+                        title={sw.label}
+                        aria-label={`颜色标记 ${sw.label}`}
+                        aria-pressed={selected}
+                        onClick={() => void handleSaveMeta({ colorLabel: selected ? '' : sw.value })}
+                        className="size-3.5 shrink-0 rounded-full transition-transform hover:scale-110 disabled:opacity-50"
+                        style={{
+                          backgroundColor: sw.bg,
+                          opacity: selected ? 1 : 0.35,
+                          boxShadow: selected ? '0 0 0 2px var(--background), 0 0 0 3.5px var(--foreground)' : 'none',
+                        }}
+                      />
+                    )
+                  })}
+                </div>
               </div>
             </div>
           </section>

@@ -398,6 +398,10 @@ export async function updatePhoto(input: {
     title?: string
     isFeatured?: boolean
     showFlag?: boolean
+    /** 用户评分 0–5（0 = 未评分）。 */
+    rating?: number
+    /** 颜色标记（'' 表示无）。 */
+    colorLabel?: string
     tags?: string
     takenAt?: string | null
     storagePath?: string

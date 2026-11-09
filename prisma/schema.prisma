@@ -112,6 +112,8 @@ model Photo {
   size            Int?
   isFeatured      Boolean  @default(false)
   showFlag        Boolean  @default(true)
+  rating          Int      @default(0) // 用户评分 0–5（0 = 未评分），对齐本地资源库
+  colorLabel      String   @default("") // 颜色标记（'' | red | orange | yellow | green | blue | purple）
   dominantColors  String?  // JSON array of hex colors, e.g. ["#ff0000", "#00ff00"]
   fileHash        String?  @unique // SHA-256 hash of the original file for duplicate detection
   createdAt       DateTime @default(now())

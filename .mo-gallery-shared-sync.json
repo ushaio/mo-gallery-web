@@ -3,10 +3,10 @@
   "note": "本文件由 mo-gallery-shared 的 pnpm sync 生成，请勿手工编辑。source.commit 是最近一次内容变更时执行同步的 shared HEAD；source.dirty 为 true 表示当时该改动尚未提交。",
   "source": {
     "repo": "github.com/ushaio/mo-gallery-shared",
-    "commit": "0e6c23d0907df75b5809ed3f91b67691abc94507",
+    "commit": "410e525c9314cfb5ad70006d239358bf68b0cb8e",
     "dirty": true
   },
-  "syncedAt": "2026-11-07T04:19:33.778Z",
+  "syncedAt": "2026-11-09T08:39:48.093Z",
   "packages": {
     "admin-console": {
       "hash": "sha256:890018a5fafaf3aa708d184514563b2c4d1f5d5bdcd5d8aee40b42fba6625ae4",
@@ -17,7 +17,7 @@
       "files": 31
     },
     "api-client": {
-      "hash": "sha256:a8b7bca0a4b1c8f544fc7af786b132ab09c9260011b07f16422ffd127f3bebde",
+      "hash": "sha256:30bf78e27c59aa8ab3641064f1558518ead0c8659ba934f601069656d6577c54",
       "files": 24
     },
     "content-core": {

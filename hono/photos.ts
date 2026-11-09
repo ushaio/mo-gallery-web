@@ -1710,6 +1710,13 @@ photos.patch('/admin/photos/:id', async (c) => {
     if (body.isFeatured !== undefined) updateData.isFeatured = body.isFeatured
     if (body.showFlag !== undefined) updateData.showFlag = Boolean(body.showFlag)
     if (body.takenAt !== undefined) updateData.takenAt = body.takenAt ? new Date(body.takenAt) : null
+    if (body.rating !== undefined) {
+      const rating = Number(body.rating)
+      updateData.rating = Number.isFinite(rating) ? Math.max(0, Math.min(5, Math.round(rating))) : 0
+    }
+    if (body.colorLabel !== undefined) {
+      updateData.colorLabel = typeof body.colorLabel === 'string' ? body.colorLabel.slice(0, 20) : ''
+    }
 
     // Handle storage path change (move file)
     if (body.storagePath !== undefined) {

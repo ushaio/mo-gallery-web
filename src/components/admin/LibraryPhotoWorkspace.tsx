@@ -199,6 +199,16 @@ function Thumb({ src, alt, className }: { src: string; alt: string; className: s
   return <img src={src} alt={alt} loading="lazy" decoding="async" draggable={false} ref={(node) => { if (node?.complete && node.naturalWidth > 0) setLoaded(true) }} onLoad={() => setLoaded(true)} className={`${className} ${loaded ? 'opacity-100' : 'opacity-0'}`} />
 }
 
+/** 颜色标记角标色值：与 COLOR_SWATCHES（详情侧栏）对齐。 */
+const COLOR_SWATCH_DOTS: Record<string, string> = {
+  red: '#EF4444',
+  orange: '#F97316',
+  yellow: '#EAB308',
+  green: '#22C55E',
+  blue: '#3B82F6',
+  purple: '#A855F7',
+}
+
 interface PhotoCardProps {
   photo: PhotoDto
   selected: boolean
@@ -286,12 +296,26 @@ const PhotoCard = memo(function PhotoCard({
           <button type="button" onClick={(event) => { event.stopPropagation(); onDelete(photo) }} className="rounded bg-black/60 p-1.5 text-white hover:bg-red-600/85" title={t('common.delete')}><Trash2 size={12} /></button>
         </div>
 
-        {(photo.isFeatured || !visible || photo.photoType === 'film') && (
+        {(photo.isFeatured || !visible || photo.photoType === 'film' || (photo.rating ?? 0) > 0) && (
           <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded bg-black/60 px-1.5 py-1 text-white">
             {photo.isFeatured && <Star size={11} fill="currentColor" />}
+            {(photo.rating ?? 0) > 0 && (
+              <span className="flex items-center gap-0.5 text-[10px] font-medium leading-none">
+                <Star size={10} fill="currentColor" />
+                {photo.rating}
+              </span>
+            )}
             {!visible && <EyeOff size={11} />}
             {photo.photoType === 'film' && <Film size={11} />}
           </div>
+        )}
+
+        {photo.colorLabel && COLOR_SWATCH_DOTS[photo.colorLabel] && (
+          <span
+            className="absolute bottom-2 left-2 size-2.5 rounded-full ring-1 ring-white/70"
+            style={{ backgroundColor: COLOR_SWATCH_DOTS[photo.colorLabel] }}
+            aria-label={photo.colorLabel}
+          />
         )}
 
         {busy && <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/45 text-white"><Loader2 size={20} className="animate-spin" /></div>}
