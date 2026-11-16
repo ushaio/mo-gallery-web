@@ -22,6 +22,8 @@ import { createTextStyleInheritancePlugin, textStyleSchema } from './text-style-
 import { ColorPalette } from './color-palette'
 import { blockStyleSchema } from './block-style-plugin'
 import { MediaDialog } from './MediaDialog'
+import { ImageEditDialog } from './ImageEditDialog'
+import type { ImageEditOptions, ImageEditReference, ImageEditResult } from './ImageEditDialog'
 import { buildMediaMarkdown, normalizeMedia, safeMediaUrl } from './media'
 import { parseMediaEmbed } from './media-embed'
 import { applyMilkdownFormatCommand, getMilkdownFormatState, readListMetrics } from './editor-commands'
@@ -155,6 +157,14 @@ export interface MilkdownEditorProps {
    * 指令可以在点击时才求值，宿主可据此现读系统设置里的提示词。
    */
   aiPolish?: AiPolishOptions
+  /**
+   * 单图 AI 改图。传了之后，**单图卡**的操作条上多一个「AI 改图」按钮。
+   *
+   * 真正的模型调用由宿主注入（`run`）—— 共享包不直连任何 AI 服务，Web 端与桌面端
+   * 各自用自己的通道。不传就完全不出现这个入口，预览 / 发布侧天然没有（那边不走
+   * NodeView，连按钮都渲染不出来）。
+   */
+  imageEdit?: ImageEditOptions
   onBusyChange?: (busy: boolean) => void
   onError?: (error: Error) => void
   /**
@@ -170,6 +180,19 @@ interface MediaRequest {
   initial: MediaCardData
   bookmark: SelectionBookmark
   getPos?: () => number | undefined
+}
+
+/**
+ * 一次「AI 改图」的现场。
+ *
+ * `getPos` 有值 = 改正文里已有的那张卡（结果可以原地换掉）；没有 = 凭空生成一张
+ * （只能插进去）。位置在打开弹窗时就记下来，生成期间用户可能已经点去了别处，
+ * 那个位置在那时未必还是同一张卡 —— 所以用完还得再核对一次节点类型。
+ */
+interface ImageEditRequest {
+  reference?: ImageEditReference
+  getPos?: () => number | undefined
+  bookmark: SelectionBookmark
 }
 
 /**
@@ -214,6 +237,7 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
   const [characters, setCharacters] = useState(0)
   const [colorRequest, setColorRequest] = useState<{ field: 'color' | 'background'; view: import('@milkdown/kit/prose/view').EditorView; anchor: { top: number; left: number; bottom: number; right: number } } | null>(null)
   const [mediaRequest, setMediaRequest] = useState<MediaRequest | null>(null)
+  const [imageEditRequest, setImageEditRequest] = useState<ImageEditRequest | null>(null)
   const [, refreshMediaDialog] = useState(0)
   const [polishSession, setPolishSession] = useState<PolishSession | null>(null)
   const polishAbort = useRef<AbortController | null>(null)
@@ -340,6 +364,18 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
         onEdit: (media, getPos) => {
           if (alive.current) setMediaRequest({ initial: media, getPos, bookmark: crepe.editor.ctx.get(editorViewCtx).state.selection.getBookmark() })
         },
+        // 只有单图卡能改：拼图是多张、播放器/链接/文件卡不是图，都不该出现这个入口
+        // （判断放在 MediaCard 里，这里只负责说「用户点了」）。
+        onAiEdit: options.current.imageEdit
+          ? (media, getPos) => {
+              if (!alive.current) return
+              setImageEditRequest({
+                reference: { photoId: media.photoId, src: media.src },
+                getPos,
+                bookmark: crepe.editor.ctx.get(editorViewCtx).state.selection.getBookmark(),
+              })
+            }
+          : undefined,
       }), refreshers.current))
       .use($prose(() => createMediaMergePlugin()))
       .use(host)
@@ -758,6 +794,52 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
     const editor = get()
     if (editor?.status === EditorStatus.Created) editor.ctx.get(editorViewCtx).focus()
   }
+
+  /**
+   * 收下改图结果。
+   *
+   * 两条路都只走**一次事务**，因此整个替换 / 插入都是一步可撤销的：
+   *  - `replace`：把那张卡的媒体数据换成新图（保留原来的对齐、宽度、说明文字 —— 用户
+   *    改的是画面，不是这张卡的排版）。
+   *  - `insert`（以及无 `getPos` 的凭空生成）：在卡片后面插一张新卡。
+   *
+   * 位置在打开弹窗时记下、生成期间文档可能已经变过，所以 `replace` 要先核对那个位置
+   * 上还是不是一张媒体卡；不是就退化成「插进当前选区」，而不是改掉别人的节点。
+   */
+  const applyImageEdit = (result: ImageEditResult, mode: 'replace' | 'insert') => {
+    const request = imageEditRequest
+    setImageEditRequest(null)
+    const editor = get()
+    if (editor?.status !== EditorStatus.Created || !request) return
+    const view = editor.ctx.get(editorViewCtx)
+
+    const produced: MediaCardData = {
+      kind: 'image',
+      src: result.url,
+      ...(result.photoId ? { photoId: result.photoId } : {}),
+      ...(result.title ? { title: result.title } : {}),
+    }
+
+    const target = mode === 'replace' ? request.getPos?.() : undefined
+    if (target !== undefined && view.state.doc.nodeAt(target)?.type.name === 'media_card') {
+      const existing = normalizeMedia(view.state.doc.nodeAt(target)!.attrs.media)
+      // 排版属性跟着原卡走：换图不该顺手把这张卡的对齐、宽度、图注清掉。
+      view.dispatch(view.state.tr.setNodeMarkup(target, undefined, {
+        media: {
+          ...produced,
+          ...(existing.align ? { align: existing.align } : {}),
+          ...(existing.width ? { width: existing.width } : {}),
+          ...(existing.caption ? { caption: existing.caption } : {}),
+        },
+      }))
+      view.focus()
+      return
+    }
+
+    try { view.dispatch(view.state.tr.setSelection(request.bookmark.resolve(view.state.doc))) } catch { /* 文档变了就按当前选区插入。 */ }
+    insertMarkdown(buildMediaMarkdown(produced))
+  }
+
   const zh = props.language !== 'en'
 
   return <div className={`milkdown-editor ${props.className ?? ''}`} data-editor="milkdown" aria-busy={loading}>
@@ -778,6 +860,14 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
       }
       closeMedia()
     }} />}
+    {imageEditRequest && props.imageEdit && <ImageEditDialog
+      language={props.language ?? 'zh'}
+      initial={imageEditRequest.reference}
+      options={props.imageEdit}
+      resolveUrl={(src) => safeMediaUrl(props.resolveMediaUrl?.(src) ?? src)}
+      onClose={() => { setImageEditRequest(null); const editor = get(); if (editor?.status === EditorStatus.Created) editor.ctx.get(editorViewCtx).focus() }}
+      onSubmit={applyImageEdit}
+    />}
     {polishSession && <PolishDialog
       language={props.language ?? 'zh'}
       label={polishSession.label}

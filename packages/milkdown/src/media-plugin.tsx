@@ -4,8 +4,8 @@ import { $node, $remark, $view } from '@milkdown/kit/utils'
 import { NodeSelection } from '@milkdown/kit/prose/state'
 import type { Node as ProseNode } from '@milkdown/kit/prose/model'
 import { MediaCard } from './MediaCard'
-import { MEDIA_TILE_DRAG_TYPE, galleryEntryKey, mediaFromAttributes, mediaToAttributes, normalizeMedia } from './media'
-import { forgetTileDrag, rememberTileDrag, setMediaDragMarker } from './media-merge'
+import { MEDIA_TILE_DRAG_TYPE, galleryEntryKey, isGalleryMedia, mediaFromAttributes, mediaToAttributes, normalizeMedia } from './media'
+import { applyCardDrop, forgetTileDrag, rememberTileDrag, setMediaDragMarker } from './media-merge'
 import type { MediaAlign, MediaCardData, MediaLinkPreviewResolver, MediaUrlResolver } from './media'
 
 export const mediaDirective = $remark('mo-media-directive', () => remarkDirective)
@@ -30,8 +30,9 @@ export const mediaSchema = $node('media_card', () => ({
    * 自己发 `dragstart` 并写 `text/html`，与这个属性无关；真正的闸门是下面 `dragstart` 监听里
    * 的 `preventDefault()`。
    *
-   * 搬运整张卡改走块手柄（`⠿`，Crepe BlockEdit 自带）；拼图格的拖拽不受影响（`MediaCard` 里
-   * 每格自己带 `draggable`，见 `media-merge.ts`）。
+   * 搬运整张卡改走 **pointer 手势**（见本文件下方「整卡 pointer 拖拽」一段），全程不发起原生
+   * HTML5 拖拽；也可以继续用块手柄（`⠿`，Crepe BlockEdit 自带）。拼图格的拖拽不受影响
+   * （`MediaCard` 里每格自己带 `draggable`，见 `media-merge.ts`）。
    */
   draggable: false,
   isolating: true,
@@ -90,6 +91,11 @@ interface MediaViewOptions {
   resolveLinkPreview?: MediaLinkPreviewResolver
   language?: 'zh' | 'en'
   onEdit: (media: MediaCardData, getPos: () => number | undefined) => void
+  /**
+   * AI 改这张图。宿主没开通改图能力时**不传** —— 那样 MediaCard 连按钮都不渲染，
+   * 预览 / 发布侧更是天然没有（那边根本不走 NodeView）。
+   */
+  onAiEdit?: (media: MediaCardData, getPos: () => number | undefined) => void
 }
 
 export function createMediaView(getOptions: () => MediaViewOptions, refreshers: Set<() => void>) {
@@ -99,6 +105,22 @@ export function createMediaView(getOptions: () => MediaViewOptions, refreshers: 
     dom.className = 'milkdown-media-node'
     dom.contentEditable = 'false'
     const root = createRoot(dom)
+
+    /**
+     * 整卡 pointer 拖拽的状态。见文件下方 `pointerdown/move/up` 那一段。
+     * 之所以不用原生 HTML5 拖拽：WebView2 的合成宿主会把页面原生拖拽做成宿主进程里的
+     * OLE `DoDragDrop` 会话，会话收不了尾时整窗收不到鼠标消息（mediaSchema.draggable 的注释）。
+     */
+    let pointerDrag: {
+      startX: number
+      startY: number
+      pointerId: number
+      from: number
+      width: number
+      height: number
+      active: boolean
+      ghost: HTMLElement | null
+    } | null = null
 
     const remove = () => {
       const pos = getPos()
@@ -150,6 +172,7 @@ export function createMediaView(getOptions: () => MediaViewOptions, refreshers: 
         // 拼图里每一格单独可拖：编辑器里传 true，预览 / 发布侧不传（见 MediaCard）
         draggableTiles={view.editable}
         onEdit={view.editable ? () => options.onEdit(media, getPos) : undefined}
+        onAiEdit={view.editable && options.onAiEdit ? () => options.onAiEdit?.(media, getPos) : undefined}
         onRemove={view.editable ? remove : undefined}
         // 对齐入口只在编辑器里出现：预览 / 发布侧 onAlignChange 不传，工具栏那一格直接不渲染
         onAlignChange={view.editable ? setAlign : undefined}
@@ -188,6 +211,13 @@ export function createMediaView(getOptions: () => MediaViewOptions, refreshers: 
     }
     dom.addEventListener('dragstart', (event) => {
       if (!view.editable || !event.dataTransfer) return
+      // 正在用 pointer 手势拖整卡：原生 dragstart 一律掐掉并且不让它冒到 ProseMirror，
+      // 否则 WebView2 会起 OLE 拖拽会话（正是整窗卡死的根因）。整卡搬运由 pointer 逻辑自己完成。
+      if (pointerDrag?.active) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
       /**
        * 正在拖角柄缩放：把这次拖拽整个掐掉。
        *
@@ -236,6 +266,129 @@ export function createMediaView(getOptions: () => MediaViewOptions, refreshers: 
     // 松手 / 拖到编辑器外 / 被 Esc 取消都要收掉源格的高亮；下一次 dragstart 也会先清一次兜底
     dom.addEventListener('dragend', endTileDrag)
 
+    /* ───────────── 整卡 pointer 拖拽（WebView2 安全，不走原生 HTML5 拖拽） ─────────────
+     *
+     * 原生 HTML5 整卡拖拽在 Desktop 的 WebView2 合成宿主里会被做成宿主进程的 OLE `DoDragDrop`
+     * 会话，收不了尾时整窗再也收不到鼠标消息（见 mediaSchema.draggable 的说明）。所以整卡的
+     * 「拖动改位置 / 拖到另一张图上并成拼图」改成 pointer 手势自己实现：
+     *   - 按在卡上（浮层按钮 / 缩放手柄 / 链接等交互元素除外）后移动超过阈值 ⇒ 起拖；
+     *   - 松手时按落点结算：落到另一张图片族卡上 = 并成拼图；落到正文 / 空白 = 移动该块。
+     * 拼图里按到某一格仍交给格子自己的原生拖拽（拖出 / 同图调序），这里不接管。
+     */
+    const DRAG_THRESHOLD = 4
+    let suppressClickUntil = 0
+    const isInteractiveTarget = (target: EventTarget | null) =>
+      target instanceof Element && Boolean(target.closest('.milkdown-media-overlay, .milkdown-media-actions, .milkdown-media-align-panel, .milkdown-media-resize, a, video, audio, iframe'))
+
+    const cardElementAt = (x: number, y: number): HTMLElement | null => {
+      const hit = document.elementFromPoint(x, y)
+      const card = hit instanceof Element ? hit.closest('.milkdown-media-node') : null
+      return card instanceof HTMLElement && card !== dom ? card : null
+    }
+    const clearDropTargets = () => {
+      document.querySelectorAll('.milkdown-media-node.is-drop-target').forEach((el) => el.classList.remove('is-drop-target'))
+    }
+
+    const cleanupPointerDrag = (state: NonNullable<typeof pointerDrag>) => {
+      dom.classList.remove('is-dragging')
+      document.body.classList.remove('is-media-card-dragging')
+      clearDropTargets()
+      setMediaDragMarker(view, false)
+      state.ghost?.remove()
+      // 兜底：视图在拖动途中被重渲染 / 卸载时，state 里那个虚影节点可能已经不在 DOM 里，
+      // 而 body 上还留着另一份；按类名扫一遍，保证任何残留的拖拽虚影都被清掉。
+      document.querySelectorAll('.milkdown-media-drag-ghost').forEach((el) => el.remove())
+    }
+
+    const detachPointerListeners = () => {
+      document.removeEventListener('pointermove', onPointerMove)
+      document.removeEventListener('pointerup', onPointerUp)
+      document.removeEventListener('pointercancel', onPointerCancel)
+    }
+
+    const onPointerMove = (event: PointerEvent) => {
+      if (!pointerDrag || event.pointerId !== pointerDrag.pointerId) return
+      if (!pointerDrag.active) {
+        const dx = event.clientX - pointerDrag.startX
+        const dy = event.clientY - pointerDrag.startY
+        if (dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD) return
+        pointerDrag.active = true
+        dom.classList.add('is-dragging')
+        document.body.classList.add('is-media-card-dragging')
+        setMediaDragMarker(view, true)
+        const ghost = document.createElement('div')
+        ghost.className = 'milkdown-media-drag-ghost'
+        ghost.style.width = pointerDrag.width + 'px'
+        ghost.style.height = pointerDrag.height + 'px'
+        document.body.appendChild(ghost)
+        pointerDrag.ghost = ghost
+      }
+      if (pointerDrag.ghost) {
+        pointerDrag.ghost.style.transform = `translate(${event.clientX - pointerDrag.width / 2}px, ${event.clientY - pointerDrag.height / 2}px)`
+      }
+      clearDropTargets()
+      const card = cardElementAt(event.clientX, event.clientY)
+      const kind = card?.querySelector('figure')?.getAttribute('data-media-kind')
+      if (card && kind && isGalleryMedia(kind as MediaCardData['kind'])) card.classList.add('is-drop-target')
+      event.preventDefault()
+    }
+
+    const onPointerUp = (event: PointerEvent) => {
+      if (!pointerDrag || event.pointerId !== pointerDrag.pointerId) return
+      const state = pointerDrag
+      pointerDrag = null
+      detachPointerListeners()
+      if (!state.active) return
+      suppressClickUntil = performance.now() + 350
+      cleanupPointerDrag(state)
+      const dropped = applyCardDrop(view, state.from, {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        target: document.elementFromPoint(event.clientX, event.clientY),
+      })
+      if (dropped) view.focus()
+    }
+
+    const onPointerCancel = (event: PointerEvent) => {
+      if (!pointerDrag || event.pointerId !== pointerDrag.pointerId) return
+      const state = pointerDrag
+      pointerDrag = null
+      detachPointerListeners()
+      if (state.active) cleanupPointerDrag(state)
+    }
+
+    // 拖完立刻跟上來的 click 不该再被当成「点开这张图」
+    dom.addEventListener('click', (event) => {
+      if (performance.now() < suppressClickUntil) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+    }, true)
+
+    dom.addEventListener('pointerdown', (event) => {
+      if (!view.editable || event.button !== 0 || !event.isPrimary) return
+      if (isInteractiveTarget(event.target)) return
+      const from = getPos()
+      if (from === undefined) return
+      const media = normalizeMedia(node.attrs.media)
+      // 拼图里按到某一格 ⇒ 交给格子自己的原生拖拽（拖出 / 同图调序），这里不接管
+      if (media.kind === 'gallery' && event.target instanceof Element && event.target.closest('.milkdown-media-photo')) return
+      const rect = dom.getBoundingClientRect()
+      pointerDrag = {
+        startX: event.clientX,
+        startY: event.clientY,
+        pointerId: event.pointerId,
+        from,
+        width: rect.width,
+        height: rect.height,
+        active: false,
+        ghost: null,
+      }
+      document.addEventListener('pointermove', onPointerMove)
+      document.addEventListener('pointerup', onPointerUp)
+      document.addEventListener('pointercancel', onPointerCancel)
+    })
+
     return {
       dom,
       update: (nextNode: ProseNode) => {
@@ -249,6 +402,11 @@ export function createMediaView(getOptions: () => MediaViewOptions, refreshers: 
       stopEvent: (event: Event) => event.target instanceof Element && Boolean(event.target.closest('button, a, video, audio, iframe')),
       ignoreMutation: () => true,
       destroy: () => {
+        detachPointerListeners()
+        if (pointerDrag) {
+          cleanupPointerDrag(pointerDrag)
+          pointerDrag = null
+        }
         refreshers.delete(render)
         // The editor may be destroyed during React's own unmount commit.
         queueMicrotask(() => root.unmount())

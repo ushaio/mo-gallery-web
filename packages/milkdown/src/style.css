@@ -209,6 +209,10 @@
    预览 / 发布侧一格都不能拖；虚线框两种拖法共用（落点判定见 media-merge.ts 的 mergeTargetDom）。 */
 .milkdown-editor .milkdown-media-grid > .milkdown-media-photo[draggable="true"] { cursor: grab; }
 .milkdown-editor .milkdown-media-photo.is-dragging { opacity: .4; cursor: grabbing; }
+/* 整卡 pointer 拖拽（见 media-plugin.tsx）：源卡压暗，跟随指针的虚影是 body 上临时挂的一个方块。 */
+.milkdown-editor .milkdown-media-node.is-dragging { opacity: .4; }
+.milkdown-media-drag-ghost { position: fixed; left: 0; top: 0; z-index: 9999; pointer-events: none; border: 1px dashed var(--primary, #475569); border-radius: 12px; background: rgba(71, 85, 105, .08); box-shadow: 0 6px 20px rgba(0, 0, 0, .18); }
+body.is-media-card-dragging { cursor: grabbing; }
 .milkdown-editor .milkdown-media-node.is-drop-target .milkdown-media { outline: 2px dashed var(--primary, #475569); outline-offset: 2px; }
 /* 拖媒体时藏掉编辑器自己的落点指示线（Crepe 的 drop-indicator 画的 `.milkdown-drop-indicator`）：
    那条线说的是「把拖拽内容插到这里」，而松手的真实语义要么是并进某张卡（由卡片上的虚线框预告）、
@@ -335,6 +339,35 @@
   .milkdown-media-dialog-controls, .milkdown-media-dialog-preview { flex: 0 0 auto; min-height: 0; overflow: visible; }
   .milkdown-media-dialog-preview { order: -1; padding: 18px 24px; border-left: 0; border-bottom: 1px solid var(--border, #ddd); }
 }
+
+/* ---------- AI 改图：单图二次编辑 ----------
+   复用 .milkdown-media-dialog 的骨架（尺寸、header/footer、两栏、窄屏退回上下排列），
+   这里只补这一屏独有的三块：标题行的图标、快捷指令那排小按钮、以及「正在生成」时的
+   蒙层。所有尺寸走变量，暗色主题自动跟随。 */
+.milkdown-image-edit > header h2 { display: flex; align-items: center; gap: 8px; }
+.milkdown-image-edit > header h2 svg { color: var(--primary, #475569); }
+/* 快捷指令：一行一个的胶囊，可换行。故意不做成下拉——这些是「省打字」，该一眼看全。 */
+.milkdown-image-edit-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.milkdown-media-dialog .milkdown-image-edit-presets button {
+  padding: 5px 10px; border: 1px solid var(--border, #ddd); border-radius: 999px;
+  background: var(--card, #fff); color: var(--muted-foreground, #777); font-size: 11.5px; line-height: 1.5;
+}
+.milkdown-media-dialog .milkdown-image-edit-presets button:hover:not(:disabled) {
+  border-color: var(--primary, #475569); color: var(--foreground, #262626);
+}
+.milkdown-media-dialog .milkdown-image-edit-presets button:disabled { opacity: .5; cursor: not-allowed; }
+/* 比例 / 模型并排：两个都是短选项，各占一半即可，不必各占一行 */
+.milkdown-image-edit-row { display: flex; gap: 12px; margin-top: 16px; }
+.milkdown-image-edit-row > label { display: grid; flex: 1 1 0; gap: 6px; min-width: 0; }
+/* 预览台：图片不撑破栏宽，生成中那张原图压暗当底 */
+.milkdown-image-edit-stage { position: relative; display: grid; width: 100%; place-items: center; }
+.milkdown-image-edit-stage img { display: block; max-width: 100%; max-height: 44dvh; object-fit: contain; border-radius: 8px; }
+.milkdown-image-edit-stage img.is-dim { opacity: .25; filter: saturate(.4); }
+.milkdown-image-edit-busy {
+  position: absolute; display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 14px; border-radius: 999px; background: #000000b3; color: #fff; font-size: 12.5px;
+}
+.milkdown-image-edit-footer-note { margin-right: auto; color: var(--muted-foreground, #777); font-size: 11.5px; }
 
 /* ---------- AI 润色：左右对照的差异浮窗 ----------
    注意 display 只在 [open] 上给：作者样式优先于 UA 的 `dialog:not([open]) { display: none }`，

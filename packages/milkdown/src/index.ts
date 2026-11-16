@@ -1,6 +1,8 @@
 export { MilkdownEditor } from './MilkdownEditor'
 export { EditorContentPrompt } from './EditorContentPrompt'
 export type { MilkdownEditorHandle, MilkdownEditorProps, MilkdownAiProvider, MilkdownAiPolish, MilkdownTextEdit, MilkdownTextEditResult, MilkdownKeyInput } from './MilkdownEditor'
+export { ImageEditDialog } from './ImageEditDialog'
+export type { ImageEditOptions, ImageEditRequest, ImageEditResult, ImageEditReference, ImageEditSizeOption } from './ImageEditDialog'
 export {
   applyMilkdownFormatCommand,
   getMilkdownFormatState,

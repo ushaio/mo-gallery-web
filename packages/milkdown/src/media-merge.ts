@@ -366,6 +366,55 @@ export function handleMediaCardDrop(view: EditorView, event: DragEvent, moved: b
   return true
 }
 
+/** pointer 整卡拖拽松手时的落点坐标（替代原生 DragEvent，避开 WebView2 的 OLE 拖拽会话）。 */
+export interface MediaDropPoint { clientX: number; clientY: number; target: EventTarget | null }
+
+/**
+ * 整卡 pointer 拖拽的落点结算：把 `from` 处那张卡按松手坐标落下去。
+ *
+ * - 落在另一张图片族卡上 ⇒ 并成拼图（与 `handleMediaCardDrop` 同一套语义）；
+ * - 落在正文/空白 ⇒ 移动到该处的节点边界（插入前后按指针在节点上/下半边判断）。
+ *
+ * 全程用 ProseMirror 事务（可撤销、会触发自动保存），**不发起任何原生 HTML5 拖拽** —— 原生
+ * 拖拽在 Desktop 的 WebView2 合成宿主里会变成 OLE `DoDragDrop` 会话，收不了尾时整窗丢鼠标消息
+ * （见 `media-plugin.tsx` 里 `mediaSchema.draggable` 的说明）。返回是否真的改动了文档。
+ *
+ * `point` 只需要 `clientX/clientY/target`，`dropTarget` / `dropIndex` / `dropPosition` 只读这几个字段，
+ * 所以这里把它们当成 DragEvent 传进去即可复用同一套命中与落位逻辑。
+ */
+export function applyCardDrop(view: EditorView, from: number, point: MediaDropPoint): boolean {
+  if (!view.editable) return false
+  const node = view.state.doc.nodeAt(from)
+  if (!node || node.type.name !== 'media_card') return false
+  const media = normalizeMedia(node.attrs.media)
+  if (!isGalleryMedia(media.kind)) return false
+  const event = point as unknown as DragEvent
+
+  const target = dropTarget(view, event)
+  if (target && target.pos !== from && isGalleryMedia(target.media.kind)) {
+    const count = target.media.kind === 'gallery' ? target.media.images?.length ?? 0 : 1
+    const merged = mergeMediaCards(target.media, media, dropIndex(target, event, count))
+    if (merged) {
+      const transaction = view.state.tr
+      transaction.setNodeMarkup(target.pos, undefined, { media: merged })
+      transaction.delete(from, from + node.nodeSize)
+      view.dispatch(transaction.scrollIntoView())
+      return true
+    }
+  }
+
+  const pos = dropPosition(view, { left: point.clientX, top: point.clientY })
+  if (pos === null) return false
+  // 落回自己这段区间内 = 原地松手，什么都不做
+  if (pos >= from && pos <= from + node.nodeSize) return false
+  const transaction = view.state.tr
+  transaction.delete(from, from + node.nodeSize)
+  const insertAt = transaction.mapping.map(pos)
+  transaction.insert(insertAt, view.state.schema.nodes.media_card.create({ media }))
+  view.dispatch(transaction.scrollIntoView())
+  return true
+}
+
 /**
  * 拖拽期间「松手会并进哪张卡」。拖某一格时落点上的任何媒体卡都算（落在自己那张拼图上就是调序，
  * 也是有效落法），拖整张卡时只有图片族才算 —— 并进播放器 / 链接卡是做不到的。

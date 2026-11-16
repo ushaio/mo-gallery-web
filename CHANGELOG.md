@@ -15,6 +15,9 @@
 
 ## [Unreleased]
 
+### fix
+31. **同步共享包 `@mo-gallery/milkdown` 镜像：编辑器恢复「拖动整张图片卡」。** 之前为修 Desktop/WebView2 上原生拖拽导致的整窗卡死，整卡 HTML5 原生拖拽被关掉，拖卡身无反应。本次共享包改成 **pointer 手势**实现（>4px 起拖；落点落到别的图片族卡上并拼图、落到正文则移动该块，复用 `media-merge.ts` 逻辑，新增 `applyCardDrop`），不发起原生拖拽、WebView2 下不会再卡死；原生 `dragstart` 闸门保留。同步时顺带补齐此前落在 shared 但本仓库未同步的 `@mo-gallery/milkdown` 改动（单图 AI 改图等）。
+
 ### feat
 28. 后台资源库（`/admin/library`）的照片新增「评分（1–5 星）」与「颜色标记（红 / 橙 / 黄 / 绿 / 蓝 / 紫）」，对齐桌面端本地资源库：详情侧栏新增「评分与颜色标记」区块（点星评分、点色点标记，再次点同值取消），网格卡片右下角状态角标增加星级数字、左下角增加颜色圆点。数据模型 `Photo` 新增 `rating Int @default(0)`、`colorLabel String @default("")`（迁移待生成），`PATCH /api/admin/photos/:id` 接受 `rating`（钳制到 0–5 整数）与 `colorLabel`；`PhotoDto` / `updatePhoto` 契约同步（共享包 `@mo-gallery/api-client`，Desktop 镜像已 `pnpm sync`）。
 27. 同步共享包镜像 `@mo-gallery/milkdown`、`@mo-gallery/ai-agent`、`@mo-gallery/api-client`：① 媒体卡里没写 `kind` 的 `::media` 指令不再一律当链接卡——既没有地址也没有任何链接元信息时按图片空位理解，正文里不会再多出一排「链接不可用」；完全空的图位在只读渲染（叙事详情页、预览）里直接不渲染，编辑器里保留「图片位置」占位以便选中删除，而「写了地址但解析失败」仍是原来的「图片暂不可用」。② 编辑器工具对话的系统提示词补三条约束（看不出任务先问一句、图片卡只写有地址的、对话里不出现内部标记）。③ `EditorAiConversationDto` / `CreateInput` / `UpdateInput` 新增可选 `agentKind`（桌面端在用的字段，Web 侧不使用，纯类型新增）。对 Desktop 无影响，App 不受影响

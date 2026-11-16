@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { FocusEvent } from 'react'
-import { AlignCenter, AlignLeft, AlignRight, ExternalLink, File, ImageOff, ImagePlus, Link, LoaderCircle, Music2, Pencil, Trash2, Video } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, ExternalLink, File, ImageOff, ImagePlus, Link, LoaderCircle, Music2, Pencil, Trash2, Video, Wand2 } from 'lucide-react'
 import { mediaProviderLabel } from './media-embed'
 import { MEDIA_ALIGNS, mediaAlign, normalizeMedia, normalizeMediaAlign, safeMediaUrl } from './media'
 import { MediaResizeLayer } from './media-resize'
@@ -41,6 +41,13 @@ interface MediaCardProps {
    * 预览与发布侧不传 —— 读者那一侧一个手柄都不该出现。
    */
   onWidthChange?: (width: number | null) => void
+  /**
+   * AI 改这张图（只在编辑器里传）。
+   *
+   * 只对**单图卡**生效 —— 拼图是多张、播放器 / 链接 / 文件卡本来就不是图，都给不出
+   * 一个明确的「这张」。传入即多一个按钮，不传一个痕迹不留。
+   */
+  onAiEdit?: () => void
   /**
    * 拼图里的每一格是否单独可拖（编辑器传 true）：拖出去即「把这一格拿出来」——
    * 拖到别的图片 / 拼图上并进去、拖到同一张拼图里调序、拖到正文里还原成独立图片卡
@@ -108,7 +115,7 @@ function uploadStatusLabel(status: MediaCardData['status'], zh: boolean): string
   return zh ? '待上传' : 'Pending'
 }
 
-export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, resolveLinkPreview, showUploadStatus = true, language = 'zh', onEdit, onRemove, onPhotoClick, onAlignChange, onWidthChange, draggableTiles = false }: MediaCardProps) {
+export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, resolveLinkPreview, showUploadStatus = true, language = 'zh', onEdit, onRemove, onPhotoClick, onAlignChange, onWidthChange, onAiEdit, draggableTiles = false }: MediaCardProps) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
   /** 对齐三选一是否已摊开（见 alignControl）。卡片被选中才显示，收起是常态。 */
   const [alignOpen, setAlignOpen] = useState(false)
@@ -158,7 +165,10 @@ export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, reso
     || fallbackTitle
   const Icon = media.kind === 'audio' ? Music2 : isPlayer ? Video : media.kind === 'file' ? File : Link
   const openLabel = zh ? '在网站打开' : 'Open on website'
-  const actions = (onEdit || onRemove) && <div className="milkdown-media-actions">
+  // 只有「一张明确的图」才谈得上改：拼图 / 播放器 / 链接 / 文件 / 待上传占位都不给入口。
+  const canAiEdit = Boolean(onAiEdit) && media.kind === 'image' && Boolean(src)
+  const actions = (onEdit || onRemove || canAiEdit) && <div className="milkdown-media-actions">
+    {canAiEdit && <button type="button" onClick={onAiEdit} aria-label={zh ? 'AI 改这张图' : 'Edit this image with AI'} title={zh ? 'AI 改这张图' : 'Edit this image with AI'}><Wand2 size={15} /></button>}
     {onEdit && media.kind !== 'upload' && <button type="button" onClick={onEdit} aria-label={zh ? '编辑媒体' : 'Edit media'} title={zh ? '编辑媒体' : 'Edit media'}><Pencil size={15} /></button>}
     {onRemove && <button type="button" onClick={onRemove} aria-label={zh ? '移除媒体' : 'Remove media'} title={zh ? '移除媒体' : 'Remove media'}><Trash2 size={15} /></button>}
   </div>
