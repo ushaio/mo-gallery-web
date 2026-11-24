@@ -74,7 +74,7 @@ TipTap v3 with extensions (table, image, link, text-align, underline). The edito
 
 ### AI (Editor Assistant)
 
-AI orchestration lives in the shared package `../mo-gallery-shared/packages/ai-agent` (`@mo-gallery/ai-agent`, Vercel AI SDK): prompt building is the single implementation for both ends. Web server (`server/lib/story-ai.ts`) uses its prompt builders and streams from the upstream OpenAI-compatible API directly. Desktop runs the same orchestration in the frontend (`../emulsion-desktop/frontend/src/lib/api/editor-ai-local.ts`) against a local Go proxy (`/v1/chat/completions`, key injection in Go — see `../emulsion-desktop/services/editor-ai.go ProxyChatCompletions`) with conversations persisted locally via Wails bindings; it works fully offline from the web server. Never add prompt logic to Go — extend `../mo-gallery-shared/packages/ai-agent` instead.
+AI orchestration lives in the shared package `../mo-gallery-shared/packages/ai-agent` (`@mo-gallery/ai-agent`, Vercel AI SDK): prompt building is the single implementation for both ends. Web server (`server/lib/story-ai.ts`) uses its prompt builders and streams from the upstream OpenAI-compatible API directly. Desktop runs the same orchestration in the frontend (`../emulsion/renderer/src/lib/api/editor-ai-local.ts`) against a local Go proxy (`/v1/chat/completions`, key injection in Go — see `../emulsion/backend-src/services/editorai/editor_ai.go ProxyChatCompletions`) with conversations persisted locally via Wails bindings; it works fully offline from the web server. Never add prompt logic to Go — extend `../mo-gallery-shared/packages/ai-agent` instead.
 
 #### Agent Extensions (Desktop only)
 
