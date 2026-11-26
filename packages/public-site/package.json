@@ -8,7 +8,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./theme.css": "./src/styles/web-theme.css"
+    "./theme.css": "./src/styles/web-theme.css",
+    "./article-content.css": "./src/styles/article-content.css"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

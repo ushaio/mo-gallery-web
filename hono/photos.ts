@@ -376,6 +376,25 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
     } else if (featured === 'false') {
       where.isFeatured = false
     }
+    // 颜色标记：多值取「任一命中」（与本地资源库的颜色筛选一致）。
+    const colorLabels = [...new Set((c.req.query('colorLabels') ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0))]
+    if (colorLabels.length > 0) {
+      andFilters.push({ colorLabel: { in: colorLabels } })
+    }
+    // 评分区间：ratingMin/ratingMax 单边可选；0 与 0 组合即「未评分」。
+    const ratingMinRaw = c.req.query('ratingMin')
+    const ratingMaxRaw = c.req.query('ratingMax')
+    const ratingMin = ratingMinRaw != null && ratingMinRaw !== '' ? parseInt(ratingMinRaw, 10) : undefined
+    const ratingMax = ratingMaxRaw != null && ratingMaxRaw !== '' ? parseInt(ratingMaxRaw, 10) : undefined
+    if ((ratingMin !== undefined && Number.isFinite(ratingMin)) || (ratingMax !== undefined && Number.isFinite(ratingMax))) {
+      const ratingWhere: { gte?: number; lte?: number } = {}
+      if (ratingMin !== undefined && Number.isFinite(ratingMin)) ratingWhere.gte = ratingMin
+      if (ratingMax !== undefined && Number.isFinite(ratingMax)) ratingWhere.lte = ratingMax
+      andFilters.push({ rating: ratingWhere })
+    }
     if (andFilters.length > 0) where.AND = andFilters
 
     // 排序

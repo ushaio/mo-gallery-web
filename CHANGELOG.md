@@ -16,9 +16,16 @@
 ## [Unreleased]
 
 ### fix
+
+33. 同一相册的照片追加按相册排队并跳过已关联照片，减少并发上传时重复关联造成的失败；不同相册继续并行。
+
+32. 叙事正文与编辑器阅读预览统一引用共享阅读样式和结构化渲染组件，与官网及 App 内嵌阅读页同步；补齐 TipTap 字号、颜色、粘贴样式、对齐与表格显示，修正 Milkdown 图组的空地址解析。
 31. **同步共享包 `@mo-gallery/milkdown` 镜像：编辑器恢复「拖动整张图片卡」。** 之前为修 Desktop/WebView2 上原生拖拽导致的整窗卡死，整卡 HTML5 原生拖拽被关掉，拖卡身无反应。本次共享包改成 **pointer 手势**实现（>4px 起拖；落点落到别的图片族卡上并拼图、落到正文则移动该块，复用 `media-merge.ts` 逻辑，新增 `applyCardDrop`），不发起原生拖拽、WebView2 下不会再卡死；原生 `dragstart` 闸门保留。同步时顺带补齐此前落在 shared 但本仓库未同步的 `@mo-gallery/milkdown` 改动（单图 AI 改图等）。
 
 ### feat
+31. 编辑器单图接入 AI 改图／生图：参考图经宿主接口读取，结果保存为新照片，可替换正文当前图或插入新图，不创建 AI 对话记录。
+30. 站点图标（`public/logo.png`，被 `app/layout.tsx` 的 favicon / apple-touch-icon 与 `app/icon.tsx` 的 256px 图标生成共用）换成与桌面端（Emulsion Desktop）标题栏 / Dock 图标同源的母版图：原图 2048px、2.0 MB，现取桌面端 1024px 母版压到 512px 调色板 PNG，28 KB，四角透明，浏览器标签页、收藏夹与「添加到主屏幕」的图标从此与桌面端、官网一致。尺寸仍足够 2 倍屏渲染（图标生成器输出 256px）。
+29. 后台资源库（`/admin/library`）照片列表新增按「颜色标记」与「评分」筛选：`GET /api/admin/photos` 接受 `colorLabels`（逗号分隔多值，命中任一）、`ratingMin` / `ratingMax`（评分区间，`0`/`0` 即未评分）查询参数，作为 `AND` 条件叠加到既有筛选上。用于桌面端（Desktop）云资源库左侧栏的颜色 / 评分筛选落到自部署后端。纯新增查询参数，不传时行为与改动前一致，对 App 无影响。
 28. 后台资源库（`/admin/library`）的照片新增「评分（1–5 星）」与「颜色标记（红 / 橙 / 黄 / 绿 / 蓝 / 紫）」，对齐桌面端本地资源库：详情侧栏新增「评分与颜色标记」区块（点星评分、点色点标记，再次点同值取消），网格卡片右下角状态角标增加星级数字、左下角增加颜色圆点。数据模型 `Photo` 新增 `rating Int @default(0)`、`colorLabel String @default("")`（迁移待生成），`PATCH /api/admin/photos/:id` 接受 `rating`（钳制到 0–5 整数）与 `colorLabel`；`PhotoDto` / `updatePhoto` 契约同步（共享包 `@mo-gallery/api-client`，Desktop 镜像已 `pnpm sync`）。
 27. 同步共享包镜像 `@mo-gallery/milkdown`、`@mo-gallery/ai-agent`、`@mo-gallery/api-client`：① 媒体卡里没写 `kind` 的 `::media` 指令不再一律当链接卡——既没有地址也没有任何链接元信息时按图片空位理解，正文里不会再多出一排「链接不可用」；完全空的图位在只读渲染（叙事详情页、预览）里直接不渲染，编辑器里保留「图片位置」占位以便选中删除，而「写了地址但解析失败」仍是原来的「图片暂不可用」。② 编辑器工具对话的系统提示词补三条约束（看不出任务先问一句、图片卡只写有地址的、对话里不出现内部标记）。③ `EditorAiConversationDto` / `CreateInput` / `UpdateInput` 新增可选 `agentKind`（桌面端在用的字段，Web 侧不使用，纯类型新增）。对 Desktop 无影响，App 不受影响
 26. 自部署上传的缩略图从 AVIF（q72）改为 **WebP（q82）**：同样是 800px 长边、体积接近、浏览器解码明显更快，资源库网格滚动更跟手。覆盖所有生成点——上传、重新上传、单独补缩略图、编辑器 AI 生图落库，以及 `scripts/backfill-thumbnails.ts` 的回填脚本（回填对象改成 `thumb-<name>.webp`）。**原图压缩格式不受影响**，仍由用户在设置里选 avif / webp。读路径不变：`thumbnailUrl` 直接取 `Photo.thumbPath`，存量照片仍指向原有的 `.avif` 对象、照常显示，不需要迁移。删除与「改存储路径」改为按 `thumbPath` 的实际记录反推缩略图 key（此前是按原图 key 硬推 `.avif`），老对象不会漏删；后台按 key 删除存储对象时若现代扩展名删失败会回退试旧扩展名（local / S3 删不存在的键本就不报错，只有 GitHub 存储会抛）。共享包 `@mo-gallery/image-pipeline` 的 `generateThumbnailBuffer` / `getMetadataAndThumbnail` 新增可选格式参数（默认仍是 avif，自部署之外的行为不变），Web 侧显式传 `webp`；对 Desktop / App 无影响

@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { Prisma } from '@/generated/prisma/client'
 import { resolvePhotoUrls, resolvePhotoUrlsInto } from '~/server/lib/photo-urls'
 import { revalidateAfterWrite, STATIC_PUBLIC_PATHS } from '~/server/lib/revalidate'
+import { withAlbumLock } from './album-lock'
 
 const albums = new Hono<{ Variables: AuthVariables }>()
 
@@ -37,6 +38,42 @@ const UpdateAlbumSchema = z.object({
   sortOrder: z.number().int().optional(),
   type: AlbumTypeSchema.optional(),
 })
+
+/**
+ * 追加照片到相册。
+ *
+ * 刻意不用一次 `connect` 全部：多张照片里只要有一张不存在，整批就会因为外键失败而
+ * 全部回滚 —— 而调用方（上传队列）是一张一张关联的，语义上每张独立成败更合适。
+ * 已经关联过的直接算成功（幂等），重复上传同一张照片不该报错。
+ */
+async function appendPhotosToAlbum(albumId: string, photoIds: string[]) {
+  return withAlbumLock(albumId, async () => {
+    // 先确认相册存在，否则下面「已存在的关联」检查会把它误判成成功。
+    const album = await db.album.findUnique({
+      where: { id: albumId },
+      select: { id: true, photos: { where: { id: { in: photoIds } }, select: { id: true } } },
+    })
+    if (!album) return null
+
+    const alreadyLinked = new Set(album.photos.map((photo) => photo.id))
+    const incoming = photoIds.filter((photoId) => !alreadyLinked.has(photoId))
+    if (incoming.length > 0) {
+      await db.album.update({
+        where: { id: albumId },
+        data: { photos: { connect: incoming.map((photoId) => ({ id: photoId })) } },
+      })
+    }
+
+    // 回读完整结果：响应契约与从前一致（相册 + 全部照片）。
+    return db.album.findUnique({
+      where: { id: albumId },
+      include: {
+        photos: { include: { tags: true } },
+        _count: { select: { photos: true } },
+      },
+    })
+  })
+}
 
 const AddPhotosSchema = z.object({
   photoIds: z.array(z.string().uuid()).min(1),
@@ -348,22 +385,8 @@ albums.post('/admin/albums/:id/photos', async (c) => {
     const body = await c.req.json()
     const validated = AddPhotosSchema.parse(body)
 
-    const album = await db.album.update({
-      where: { id },
-      data: {
-        photos: {
-          connect: validated.photoIds.map((photoId) => ({ id: photoId })),
-        },
-      },
-      include: {
-        photos: {
-          include: { tags: true },
-        },
-        _count: {
-          select: { photos: true },
-        },
-      },
-    })
+    const album = await appendPhotosToAlbum(id, validated.photoIds)
+    if (!album) return c.json({ error: 'Album not found' }, 404)
 
     const data = {
       ...album,

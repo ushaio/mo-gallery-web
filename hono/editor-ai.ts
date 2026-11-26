@@ -36,6 +36,7 @@ import {
   type EditorAiRepository,
 } from '~/server/lib/editor-ai'
 import { saveEditorAiMessageImage } from '~/server/lib/editor-ai-images'
+import { editEditorImage } from '~/server/lib/editor-image-edit'
 import { loadSafeRemoteImage } from '~/server/lib/safe-remote-image'
 
 type EditorAiImageSaveResult = Awaited<ReturnType<typeof saveEditorAiMessageImage>>
@@ -169,6 +170,31 @@ const GenerateEditorAiImageSchema = z.object({
   images: z.array(z.string().min(1)).max(16).optional(),
   imageKeys: z.array(z.string().min(1)).max(16).optional(),
   truncateFromMessageId: z.string().min(1).optional(),
+})
+
+/**
+ * 编辑器内改图：**不绑会话**。
+ *
+ * 与上面那条 `generate-image` 的差别只有「不落会话」—— 改一张素材是操作，不是一次
+ * 对话，不该在 AI 对话列表里留下痕迹。参考图直接给存储键（优先）或公网地址，
+ * 产物登记成一张新 Photo，与普通上传同构，插入正文后导出链路无需特判。
+ */
+const EditEditorImageSchema = z.object({
+  prompt: z.string().trim().min(1).max(4000),
+  /** 参考图的 Photo id（编辑器里媒体卡能拿到的就是它）。服务端查 path 再读文件。 */
+  referencePhotoId: z.string().min(1).max(120).optional(),
+  /** 参考图的站内存储键（Photo.path）。已知时直接给，省一次查询。 */
+  referenceKey: z.string().min(1).max(500).optional(),
+  /**
+   * 图片地址：公网 URL 或站内相对路径（`/uploads/xxx.png`）。
+   *
+   * 刻意不要求 `.url()` —— `resolveAssetUrl` 在没配 API base / CDN 的宿主里会原样
+   * 返回相对路径，那种环境下 `.url()` 校验会把一次本来能成的改图挡在 400。
+   */
+  referenceUrl: z.string().trim().min(1).max(2000).optional(),
+  imageModel: z.string().max(200).optional(),
+  imageSize: z.string().max(40).optional(),
+  title: z.string().max(200).optional(),
 })
 
 const MAX_REFERENCE_IMAGE_BYTES = 50 * 1024 * 1024
@@ -702,6 +728,51 @@ editorAi.post('/admin/editor-ai/generate-image', async (c) => {
     const notFound = editorAiNotFound(c, error)
     if (notFound) return notFound
     console.error('Editor AI image generation error:', error)
+    const status = message.includes('not configured') ? 503 : 500
+    return c.json({ error: message }, status)
+  }
+})
+
+/**
+ * 编辑器内改图 / 生图（**不落会话**）。
+ *
+ * 与 `/admin/editor-ai/generate-image` 的差别只有一条：那条路要 `conversationId`，
+ * 因为它把每次生成都记成对话里的一条消息（AI 对话页需要那份历史）。编辑器里改一张
+ * 素材是「对这张图做一次操作」，不该出现在对话列表里，也不值得为它建隐藏会话再清理。
+ *
+ * 产物登记成一张**新** Photo（与普通上传同构），不覆盖原图 —— 原图可能已被别的文章、
+ * 相册引用，就地覆盖会让那些引用一起变样。
+ */
+editorAi.post('/admin/editor-ai/edit-image', async (c) => {
+  try {
+    // 已经过 authMiddleware：这次调用只为确认登录态，产物是用户级资源。
+    const validated = EditEditorImageSchema.parse(await c.req.json())
+    // photoId 与 url **同时**保留：id 能让服务端直接读存储（绕开公网与权限），
+    // 而 url 是「这个 key 在本存储里取不到」时的退路（换了存储源、桌面插件源）。
+    // 只有一个也不碍事 —— 读取端逐级回退。三者都没有＝纯文生图。
+    const reference = validated.referencePhotoId || validated.referenceKey || validated.referenceUrl
+      ? {
+          ...(validated.referencePhotoId ? { photoId: validated.referencePhotoId } : {}),
+          ...(validated.referenceKey ? { storageKey: validated.referenceKey } : {}),
+          ...(validated.referenceUrl ? { url: validated.referenceUrl } : {}),
+        }
+      : undefined
+
+    const result = await editEditorImage({
+      prompt: validated.prompt,
+      ...(reference ? { reference } : {}),
+      ...(validated.imageModel ? { model: validated.imageModel } : {}),
+      ...(validated.imageSize ? { size: validated.imageSize } : {}),
+      ...(validated.title ? { title: validated.title } : {}),
+    })
+
+    return c.json({ success: true, data: result })
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return c.json({ error: 'Validation error', details: error.issues }, 400)
+    }
+    const message = error instanceof Error ? error.message : 'Image edit failed'
+    console.error('Editor AI image edit error:', error)
     const status = message.includes('not configured') ? 503 : 500
     return c.json({ error: message }, status)
   }

@@ -10,6 +10,7 @@ import { diffPluginKey } from '@milkdown/kit/plugin/diff'
 import { streamingPluginKey } from '@milkdown/kit/plugin/streaming'
 import { Plugin, PluginKey, TextSelection } from '@milkdown/kit/prose/state'
 import type { SelectionBookmark } from '@milkdown/kit/prose/state'
+import type { EditorView } from '@milkdown/kit/prose/view'
 import { $prose, getMarkdown, insert, replaceAll } from '@milkdown/kit/utils'
 import { createFeatures } from './features'
 import type { AiPolishOptions, AiPolishRequest } from './features'
@@ -31,6 +32,38 @@ import type { MilkdownFormatCommand, MilkdownFormatResult, MilkdownFormatState }
 import type { MediaCardData, MediaLinkPreviewResolver, MediaUrlResolver } from './media'
 import type { MediaDialogSelectRenderer } from './media-dialog-select'
 import './style.css'
+
+/**
+ * 落点最近的块边界（与编辑器内置 drop indicator 同一套判定）。
+ *
+ * 对每个块取它 DOM 的 top / bottom 两条线，按落点到两条线端点的曼哈顿距离取最近的一条。
+ * 拖到「两行之间」时吸附到段落边界，而不是停在鼠标所在那一行里 —— 后者会让块级媒体
+ * 插到那一行下面，看起来和横条不符。
+ */
+function nearestBlockBoundary(view: EditorView, left: number, top: number): number | null {
+  let bestPos: number | null = null
+  let bestDist = Number.POSITIVE_INFINITY
+  view.state.doc.descendants((node, pos) => {
+    if (!node.isBlock) return false
+    const dom = view.nodeDOM(pos)
+    if (!(dom instanceof HTMLElement)) return !node.isTextblock
+    const rect = dom.getBoundingClientRect()
+    const consider = (boundary: number, y: number) => {
+      const dist = Math.min(
+        Math.abs(left - rect.left) + Math.abs(top - y),
+        Math.abs(left - rect.right) + Math.abs(top - y),
+      )
+      if (dist < bestDist || (dist === bestDist && bestPos !== null && boundary < bestPos)) {
+        bestDist = dist
+        bestPos = boundary
+      }
+    }
+    consider(pos, rect.top)
+    consider(pos + node.nodeSize, rect.bottom)
+    return !node.isTextblock
+  })
+  return bestPos
+}
 
 export interface MilkdownEditorHandle {
   getValue: () => string
@@ -75,6 +108,18 @@ export interface MilkdownEditorHandle {
   executeFormatCommand: (command: MilkdownFormatCommand) => MilkdownFormatResult
   /** 把选区放到指定文档位置；格式命令作用于当前选区。 */
   setSelection: (from: number, to?: number) => boolean
+  /**
+   * 把光标放到屏幕坐标对应的文档位置。
+   *
+   * 外部拖拽（素材面板的瓦片、资源库卡片）落进正文时用：drop 事件只给鼠标坐标，
+   * 先按它定位、再走既有的插入 API，插入位置才会与拖动时画出的落点横条一致，
+   * 而不是跑到上一次光标处。
+   *
+   * `snap: 'block'` 把落点吸附到**最近的块边界**（与编辑器内置 drop indicator 同一套
+   * 判定：比较落点到块 top/bottom 线的距离），否则光标会停在鼠标所在的那一行里，
+   * 块级媒体插进去就落到那一行下面，和横条对不上。
+   */
+  setSelectionAtPoint: (point: { left: number; top: number }, options?: { snap?: 'block' }) => boolean
   /** 整体替换正文（一次事务，不弹差异浮窗）。 */
   setContent: (content: string) => boolean
   /** 走 ProseMirror 的文本输入通道打字，Markdown 输入规则会生效。 */
@@ -726,6 +771,18 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
       if (min < 1 || max > view.state.doc.content.size + 1) return false
       view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, min, max)).scrollIntoView())
       view.focus()
+      return true
+    },
+    setSelectionAtPoint: ({ left, top }, options) => {
+      const editor = get()
+      if (editor?.status !== EditorStatus.Created) return false
+      const view = editor.ctx.get(editorViewCtx)
+      if (!view.editable) return false
+      const boundary = options?.snap === 'block' ? nearestBlockBoundary(view, left, top) : null
+      const pos = boundary ?? view.posAtCoords({ left, top })?.pos
+      if (pos == null) return false
+      // 贴到最近的文本位置：落点常落在节点边界/段落内部，create 会抛 RangeError。
+      view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(pos), 1)).scrollIntoView())
       return true
     },
     setContent: (content: string) => {

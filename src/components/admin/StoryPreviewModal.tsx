@@ -20,7 +20,7 @@ import {
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { StoryDto, PhotoDto } from '@/lib/api/types'
 import { AdminButton } from '@/components/admin/AdminButton'
-import { StoryRichContent } from '@/components/StoryRichContent'
+import { PublicArticleBody } from '@/components/PublicArticleBody'
 import { getStoryCoverImageStyle, getStoryCoverPhoto } from '@/lib/story-cover'
 import { getArticlePlainText } from '@/lib/article-content'
 
@@ -203,9 +203,11 @@ export function StoryPreviewModal({
         <main>
           <article className="mb-16">
             <div className="prose prose-lg prose-zinc max-w-none dark:prose-invert prose-headings:font-serif prose-headings:tracking-tight prose-p:leading-relaxed prose-a:text-zinc-900 prose-a:decoration-zinc-300 prose-a:underline-offset-4 hover:prose-a:text-zinc-600 dark:prose-a:text-zinc-100 dark:prose-a:decoration-zinc-600 dark:hover:prose-a:text-zinc-300">
-              <StoryRichContent
+              <PublicArticleBody
+                articleId={story.id}
                 editorType={story.editorType}
-                content={story.tiptapContent}
+                tiptapContent={story.tiptapContent}
+                tiptapContentJson={story.tiptapContentJson}
                 milkContent={story.milkContent}
                 photos={photos}
                 cdnDomain={cdnDomain}

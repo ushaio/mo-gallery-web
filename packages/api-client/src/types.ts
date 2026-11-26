@@ -392,6 +392,39 @@ export interface EditorAiImageGenerateInput {
   truncateFromMessageId?: string
 }
 
+/**
+ * 编辑器内「对单张图做二次编辑」的入参。
+ *
+ * 与 `EditorAiImageGenerateInput` 的关键差别是**没有 conversationId**：改一张素材不是
+ * 一次对话，产物直接登记成一张新 Photo，AI 对话列表里不留痕迹。
+ *
+ * 参考图给 `referencePhotoId`（编辑器里媒体卡只知道 Photo id，服务端负责查存储键），
+ * 其次 `referenceKey`（已知存储键）或 `referenceUrl`（公网地址）；都不给就是纯文生图
+ * ——同一个对话框既能改图也能凭空生一张。
+ */
+export interface EditorImageEditInput {
+  prompt: string
+  /** 参考图的 Photo id（编辑器里媒体卡拿到的就是它）。服务端查 path 再读文件。 */
+  referencePhotoId?: string
+  /** 参考图的站内存储键（Photo.path）。已知时可直接给，省一次查询。 */
+  referenceKey?: string
+  /** 公网地址。前两者都缺时用它（老卡片只有地址、或外部图）。 */
+  referenceUrl?: string
+  imageModel?: string
+  imageSize?: string
+  title?: string
+}
+
+/** 「单图二次编辑」的产物：已经落成一张 Photo，可直接插进正文。 */
+export interface EditorImageEditResult {
+  photoId: string
+  url: string | null
+  thumbnailUrl: string | null
+  width: number
+  height: number
+}
+
+
 export interface AiImageMetadata {
   type: 'image'
   localPath?: string

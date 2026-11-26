@@ -9,7 +9,13 @@
 - **媒体 URL**：私有/公开地址区分由 `MediaUrlResolver` 承担（Official 为 HMAC 签名 URL，Web 为静态/存储地址）。组件内部使用原生 `<img>`，不绑定宿主图片优化组件。
 - **富文本净化**：多用户托管场景禁止 `dangerouslySetInnerHTML`。milkdown 正文走 `@mo-gallery/milkdown` 的只读 Markdown 渲染器（ReactMarkdown 管线）；tiptap 正文走 `TiptapJsonView` 结构化 JSON 渲染（未知节点/标记降级，`javascript:` 等协议拒绝）。宿主必须为 tiptap 文章提供 `tiptapContentJson`。
 - **样式**：Tailwind 工具类 + 两侧消费方共有的语义 token（`background/muted/muted-foreground/border/primary`）；文案经 `PublicSiteLabels` 注入（`resolveLabels` 浅合并，默认中文）。
-- **主题层**：`src/styles/web-theme.css`（见下节「web 主题层」）提供 web 访客侧（Gallery Wall / Midnight Vernissage）的视觉令牌与工具类，全部 scope 在 `.psw` 根类下。
+- **主题层**：`src/styles/web-theme.css`（见下节「web 主题层」）提供 web 访客侧（Gallery Wall / Midnight Vernissage）的视觉令牌与工具类，主题 scope 在 `.psw` 根类下；统一正文样式限定在 `.story-rich-content` 类下。
+
+## 正文渲染与样式
+
+Web、官网、编辑器阅读预览及 App 内嵌阅读页使用 `ArticleBody` 的 Milkdown / TipTap 只读管线。正文排版只有一份源文件 `src/styles/article-content.css`，宿主以 `@mo-gallery/public-site/article-content.css` 引入；`theme.css` 已引入该文件，不再维护正文样式快照。
+
+App 通过 `resolvePhotoUrl` 注入原生端已授权的照片地址，并使用 `strict` 明确报告不支持的格式、节点或缺失的结构化正文。TipTap 的字体、颜色和块样式复用 `@mo-gallery/tiptap-editor/content-style` 中与编辑器共用的值校验。编辑器工具栏与编辑态专有样式不属于阅读样式。
 
 ## web 主题层（web-theme.css）
 

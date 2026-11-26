@@ -129,7 +129,7 @@ export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, reso
   const emptyImageSlot = (media.kind === 'image' && !media.src && !media.photoId)
     || (media.kind === 'gallery' && (media.images?.length ?? 0) === 0)
   if (emptyImageSlot && !showUploadStatus) return null
-  const resolve = (src = '', photoId?: string) => safeMediaUrl(resolveUrl?.(src, photoId) ?? src)
+  const resolve = (src = '', photoId?: string) => src || photoId ? safeMediaUrl(resolveUrl?.(src, photoId) ?? src) : ''
   const uploadPreview = (uploadId?: string) => uploadId ? resolveUploadPreview?.(uploadId) : undefined
   const src = resolve(media.src, media.photoId)
   const source = sourceLabel(src)

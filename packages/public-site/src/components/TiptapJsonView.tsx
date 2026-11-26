@@ -4,6 +4,7 @@ import { Fragment, memo, type CSSProperties, type ReactNode } from 'react'
 
 import type { TiptapJsonNode } from '@mo-gallery/content-core'
 import { resolveStoredMediaEmbedInfo } from '@mo-gallery/tiptap-editor/media-embed'
+import { contentBlockStyle, contentInlineStyle } from '@mo-gallery/tiptap-editor/content-style'
 
 /**
  * TipTap JSON → React 的结构化渲染器（访客侧安全管线）。
@@ -30,6 +31,7 @@ export interface TiptapJsonViewProps {
   /** 站内引用（storyLinkCard 的 data-url 等）→ 宿主路由地址。 */
   resolveInternalHref?: (rawHref: string) => string
   className?: string
+  strict?: boolean
 }
 
 interface RenderContext {
@@ -37,6 +39,7 @@ interface RenderContext {
   resolvePhotoUrl?: (photoId: string, rawUrl: string) => string
   onPhotoClick?: (photoId: string) => void
   resolveInternalHref?: (rawHref: string) => string
+  strict?: boolean
 }
 
 function isSafeUrl(rawUrl: string): boolean {
@@ -51,7 +54,7 @@ function resolveUrl(rawUrl: unknown, resolveAssetUrl?: (rawUrl: string) => strin
   const trimmed = rawUrl.trim()
   if (!isSafeUrl(trimmed)) return null
   const resolved = resolveAssetUrl ? resolveAssetUrl(trimmed) : trimmed
-  return isSafeUrl(resolved) ? resolved : null
+  return isSafeUrl(resolved) || (resolveAssetUrl && resolved.startsWith('blob:')) ? resolved : null
 }
 
 function attrString(value: unknown): string | undefined {
@@ -62,7 +65,7 @@ function attrNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
-function renderMarks(text: string, marks: TiptapJsonNode['marks'], keyPrefix: string): ReactNode {
+function renderMarks(text: string, marks: TiptapJsonNode['marks'], keyPrefix: string, strict?: boolean): ReactNode {
   if (!marks || marks.length === 0) return text
 
   return marks.reduceRight<ReactNode>((children, mark, index) => {
@@ -78,9 +81,15 @@ function renderMarks(text: string, marks: TiptapJsonNode['marks'], keyPrefix: st
         return <s key={key}>{children}</s>
       case 'code':
         return <code key={key} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]">{children}</code>
+      case 'textStyle':
+      case 'pastedStyle':
+        return <span key={key} style={contentInlineStyle(mark.attrs)}>{children}</span>
       case 'link': {
         const href = resolveUrl(mark.attrs?.href, undefined)
-        if (!href) return children
+        if (!href) {
+          if (strict) throw new Error('叙事中的链接地址无效。')
+          return children
+        }
         return (
           <a key={key} href={href} target="_blank" rel="noreferrer noopener">
             {children}
@@ -88,6 +97,7 @@ function renderMarks(text: string, marks: TiptapJsonNode['marks'], keyPrefix: st
         )
       }
       default:
+        if (strict) throw new Error(`暂不支持叙事文字格式（${mark.type}）。`)
         return children
     }
   }, text)
@@ -99,12 +109,16 @@ function renderImage(node: TiptapJsonNode, context: RenderContext, key: string):
   let src: string | null = null
   if (photoId && context.resolvePhotoUrl) {
     const resolved = context.resolvePhotoUrl(photoId, rawSrc)
-    src = resolved && isSafeUrl(resolved) ? resolved : null
+    src = resolved && (isSafeUrl(resolved) || resolved.startsWith('blob:')) ? resolved : null
+    if (!src && context.strict) throw new Error('这篇叙事引用的照片无法读取。')
   }
   if (!src) {
     src = resolveUrl(node.attrs?.src, context.resolveAssetUrl)
   }
-  if (!src) return null
+  if (!src) {
+    if (context.strict) throw new Error('叙事中的图片地址缺失或无效。')
+    return null
+  }
   const alt = typeof node.attrs?.alt === 'string' ? node.attrs.alt : ''
   const width = attrNumber(node.attrs?.width)
   const align = attrString(node.attrs?.align) ?? attrString(node.attrs?.['data-align'])
@@ -117,7 +131,7 @@ function renderImage(node: TiptapJsonNode, context: RenderContext, key: string):
   }
   if (align === 'center' || align === 'right') {
     style.display = 'block'
-    style.marginLeft = align === 'center' ? 'auto' : undefined
+    style.marginLeft = 'auto'
     style.marginRight = align === 'center' ? 'auto' : align === 'right' ? 0 : undefined
   }
   const clickable = Boolean(photoId && context.onPhotoClick)
@@ -128,6 +142,7 @@ function renderImage(node: TiptapJsonNode, context: RenderContext, key: string):
       src={src}
       alt={alt}
       loading="lazy"
+      data-photo-id={photoId}
       style={style}
       className={clickable ? 'cursor-zoom-in' : undefined}
       onClick={clickable ? () => context.onPhotoClick?.(photoId as string) : undefined}
@@ -135,7 +150,7 @@ function renderImage(node: TiptapJsonNode, context: RenderContext, key: string):
   )
 }
 
-function renderMediaEmbed(node: TiptapJsonNode, key: string): ReactNode {
+function renderMediaEmbed(node: TiptapJsonNode, context: RenderContext, key: string): ReactNode {
   const attrs = node.attrs ?? {}
   const embedInfo = resolveStoredMediaEmbedInfo({
     provider: attrString(attrs.provider) ?? null,
@@ -152,8 +167,10 @@ function renderMediaEmbed(node: TiptapJsonNode, key: string): ReactNode {
     border: attrString(attrs.border) ?? null,
     frameSpacing: attrString(attrs.frameSpacing) ?? null,
   })
-  // 白名单外或不可解析的 embed：访客侧一律不渲染（避免任意 iframe 注入）。
-  if (!embedInfo || !isSafeUrl(embedInfo.src)) return null
+  if (!embedInfo || !isSafeUrl(embedInfo.src)) {
+    if (context.strict) throw new Error('叙事中的音视频嵌入无效或暂不支持。')
+    return null
+  }
   return (
     <div key={key} className="story-media-card" data-type="media-embed">
       <iframe
@@ -183,12 +200,19 @@ function renderStoryLinkCard(node: TiptapJsonNode, context: RenderContext, key: 
   const attrs = node.attrs ?? {}
   const storyId = attrString(attrs.storyId) ?? ''
   const rawUrl = attrString(attrs.url) ?? (storyId ? `/story/${storyId}` : '')
-  if (!rawUrl) return null
+  if (!rawUrl) {
+    if (context.strict) throw new Error('叙事链接卡缺少目标地址。')
+    return null
+  }
   const resolvedHref = context.resolveInternalHref ? context.resolveInternalHref(rawUrl) : rawUrl
-  if (!resolvedHref || !isSafeUrl(resolvedHref)) return null
+  if (!resolvedHref || !isSafeUrl(resolvedHref)) {
+    if (context.strict) throw new Error('叙事链接卡的目标地址无效。')
+    return null
+  }
   const title = attrString(attrs.title) ?? 'Untitled story'
   const summary = attrString(attrs.summary)
   const coverUrl = resolveUrl(attrs.coverUrl, context.resolveAssetUrl)
+  if (context.strict && attrString(attrs.coverUrl) && !coverUrl) throw new Error('叙事链接卡的封面地址无效。')
   const dateLabel = formatStoryCardDate(attrString(attrs.date))
   const isPublished = attrs.published !== false
 
@@ -222,20 +246,33 @@ function renderNode(node: TiptapJsonNode, context: RenderContext, index: number)
 
   switch (node.type) {
     case 'paragraph':
-      return <p key={key}>{children}</p>
+      return <p key={key} style={contentBlockStyle(node.attrs)}>{children}</p>
     case 'heading': {
       const level = Math.min(Math.max(Number(node.attrs?.level) || 1, 1), 6) as 1 | 2 | 3 | 4 | 5 | 6
       const Tag = `h${level}` as const
-      return <Tag key={key}>{children}</Tag>
+      return <Tag key={key} style={contentBlockStyle(node.attrs)}>{children}</Tag>
     }
     case 'bulletList':
       return <ul key={key}>{children}</ul>
     case 'orderedList':
-      return <ol key={key}>{children}</ol>
+      return <ol key={key} start={attrNumber(node.attrs?.start)}>{children}</ol>
     case 'listItem':
-      return <li key={key}>{children}</li>
+      return <li key={key} style={contentBlockStyle(node.attrs)}>{children}</li>
     case 'blockquote':
-      return <blockquote key={key}>{children}</blockquote>
+      return <blockquote key={key} style={contentBlockStyle(node.attrs)}>{children}</blockquote>
+    case 'table':
+      return <table key={key}><tbody>{children}</tbody></table>
+    case 'tableRow':
+      return <tr key={key}>{children}</tr>
+    case 'tableCell':
+    case 'tableHeader': {
+      const Cell = node.type === 'tableHeader' ? 'th' : 'td'
+      const widths = Array.isArray(node.attrs?.colwidth) ? node.attrs.colwidth : []
+      const width = widths.every((value) => typeof value === 'number' && value > 0)
+        ? widths.reduce<number>((total, value) => total + Number(value), 0)
+        : 0
+      return <Cell key={key} colSpan={attrNumber(node.attrs?.colspan)} rowSpan={attrNumber(node.attrs?.rowspan)} style={width ? { width } : undefined}>{children}</Cell>
+    }
     case 'codeBlock':
       return (
         <pre key={key}>
@@ -253,7 +290,8 @@ function renderNode(node: TiptapJsonNode, context: RenderContext, index: number)
       return (
         <div
           key={key}
-          className="flex flex-wrap items-start gap-3"
+          data-type="image-group"
+          data-align={align}
           style={align === 'center' || align === 'right' ? { justifyContent: align === 'center' ? 'center' : 'flex-end' } : undefined}
         >
           {children}
@@ -261,19 +299,20 @@ function renderNode(node: TiptapJsonNode, context: RenderContext, index: number)
       )
     }
     case 'mediaEmbed':
-      return renderMediaEmbed(node, key)
+      return renderMediaEmbed(node, context, key)
     case 'storyLinkCard':
       return renderStoryLinkCard(node, context, key)
     case 'text':
-      return <Fragment key={key}>{renderMarks(node.text ?? '', node.marks, key)}</Fragment>
+      return <Fragment key={key}>{renderMarks(node.text ?? '', node.marks, key, context.strict)}</Fragment>
     default:
+      if (context.strict) throw new Error(`暂不支持叙事内容块（${node.type}）。`)
       // 未知节点：仅递归渲染子节点（无子节点则忽略），不输出其属性。
       return children.length > 0 ? <div key={key}>{children}</div> : null
   }
 }
 
-export const TiptapJsonView = memo(function TiptapJsonView({ doc, resolveAssetUrl, resolvePhotoUrl, onPhotoClick, resolveInternalHref, className }: TiptapJsonViewProps) {
-  const children = renderNodes(doc.content, { resolveAssetUrl, resolvePhotoUrl, onPhotoClick, resolveInternalHref })
+export const TiptapJsonView = memo(function TiptapJsonView({ doc, resolveAssetUrl, resolvePhotoUrl, onPhotoClick, resolveInternalHref, className, strict }: TiptapJsonViewProps) {
+  const children = renderNodes(doc.content, { resolveAssetUrl, resolvePhotoUrl, onPhotoClick, resolveInternalHref, strict })
   if (children.length === 0) return null
   return <div className={className}>{children}</div>
 })

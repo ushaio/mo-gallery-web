@@ -12,6 +12,8 @@ import type {
   EditorAiGenerateInput,
   EditorAiImageGenerateInput,
   EditorAiImageSaveResult,
+  EditorImageEditInput,
+  EditorImageEditResult,
   EditorAiMessageAppendInput,
   EditorAiMessageDto,
   EditorAiMessageFinishInput,
@@ -183,6 +185,26 @@ export async function generateEditorAiImage(
 ): Promise<EditorAiConversationWithMessagesDto> {
   return apiRequestData<EditorAiConversationWithMessagesDto>(
     '/api/admin/editor-ai/generate-image',
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+    token,
+  )
+}
+
+/**
+ * 编辑器内改图 / 生图。
+ *
+ * 不绑会话：服务端把结果登记成一张新 Photo 并直接返回，调用方拿到 `photoId` 就能插进正文。
+ * 与 `generateEditorAiImage` 是两条独立的路 —— 那条要给 AI 对话页留历史，这条不留。
+ */
+export async function editEditorImage(
+  token: string,
+  input: EditorImageEditInput,
+): Promise<EditorImageEditResult> {
+  return apiRequestData<EditorImageEditResult>(
+    '/api/admin/editor-ai/edit-image',
     {
       method: 'POST',
       body: JSON.stringify(input),

@@ -9,6 +9,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./media-embed": "./src/lib/media-embed.ts",
+    "./content-style": "./src/lib/content-style.ts",
     "./styles.css": "./src/tiptap-editor.css"
   },
   "dependencies": {

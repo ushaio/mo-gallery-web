@@ -1,4 +1,5 @@
 import { Extension } from '@tiptap/core'
+import { sanitizeContentStyleValue as sanitizeStyleValue } from '../lib/content-style'
 
 const ALLOWED_STYLE_PROPERTIES = new Set([
   'color',
@@ -6,36 +7,6 @@ const ALLOWED_STYLE_PROPERTIES = new Set([
   'font-size',
   'font-family',
 ])
-
-function sanitizeStyleValue(property: string, rawValue: string | null | undefined) {
-  const value = rawValue?.trim().replace(/\s+/g, ' ')
-  if (!value) return null
-
-  const lowered = value.toLowerCase()
-  if (
-    lowered.includes('expression(') ||
-    lowered.includes('javascript:') ||
-    lowered.includes('url(')
-  ) {
-    return null
-  }
-
-  if (
-    property === 'font-size' &&
-    !/^\d+(\.\d+)?(px|em|rem|%)$/i.test(value)
-  ) {
-    return null
-  }
-
-  if (
-    property === 'font-family' &&
-    /[;{}<>]/.test(value)
-  ) {
-    return null
-  }
-
-  return value
-}
 
 function extractSupportedBlockStyle(element: HTMLElement) {
   const styleEntries: string[] = []

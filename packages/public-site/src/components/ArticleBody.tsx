@@ -30,7 +30,9 @@ export interface ArticleBodyProps {
   resolver: MediaUrlResolver
   /** 正文内联照片（milkdown 媒体卡回显 / tiptap photoId 解析用）。 */
   photos?: PhotoSiteMetadata[]
+  resolvePhotoUrl?: (photoId: string, rawUrl: string) => string
   className?: string
+  strict?: boolean
   /** 正文内联照片点击回调（可选，如打开灯箱）。 */
   onOpenPhoto?: (photo: PhotoSiteMetadata) => void
   /** 站内引用（storyLinkCard 的 data-url 等）→ 宿主路由地址。 */
@@ -52,7 +54,9 @@ export const ArticleBody = function ArticleBody({
   milkContent,
   resolver,
   photos,
+  resolvePhotoUrl,
   className,
+  strict,
   onOpenPhoto,
   resolveInternalHref,
   renderTiptapHtmlFallback,
@@ -64,6 +68,10 @@ export const ArticleBody = function ArticleBody({
     return map
   }, [photos])
 
+  if (strict && editorType !== 'milkdown' && editorType !== 'tiptap') {
+    throw new Error(`暂不支持这篇叙事的正文格式（${editorType}）。`)
+  }
+
   if (editorType === 'milkdown') {
     return (
       <MilkdownContent
@@ -72,8 +80,10 @@ export const ArticleBody = function ArticleBody({
         resolveMediaUrl={(src, photoId) => {
           const matched = photoId ? photoById.get(photoId) : undefined
           try {
+            if (photoId && resolvePhotoUrl) return resolvePhotoUrl(photoId, src)
             return matched ? resolver.photoDisplay(matched) : resolver.articleAsset(articleId, src)
-          } catch {
+          } catch (error) {
+            if (strict) throw error
             return src
           }
         }}
@@ -92,18 +102,22 @@ export const ArticleBody = function ArticleBody({
     return (
       <TiptapJsonView
         doc={tiptapContentJson}
+        strict={strict}
         resolveAssetUrl={(rawUrl) => {
           try {
             return resolver.articleAsset(articleId, rawUrl)
-          } catch {
+          } catch (error) {
+            if (strict) throw error
             return rawUrl
           }
         }}
         resolvePhotoUrl={(photoId, rawUrl) => {
           const matched = photoById.get(photoId)
           try {
+            if (resolvePhotoUrl) return resolvePhotoUrl(photoId, rawUrl)
             return matched ? resolver.photoDisplay(matched) : resolver.articleAsset(articleId, rawUrl)
-          } catch {
+          } catch (error) {
+            if (strict) throw error
             return rawUrl
           }
         }}
@@ -120,6 +134,7 @@ export const ArticleBody = function ArticleBody({
   }
 
   if (editorType === 'tiptap' && tiptapContent) {
+    if (strict) throw new Error('这篇叙事缺少结构化正文，暂时无法阅读。')
     return <>{renderTiptapHtmlFallback?.(tiptapContent) ?? null}</>
   }
 
