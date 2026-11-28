@@ -39,14 +39,20 @@ export type EditorAiStreamEvent =
   | { type: 'reasoning-delta'; id: string; text: string }
   | { type: 'tool-input-start'; id: string; name: string }
   | { type: 'tool-input-delta'; id: string; delta: string }
-  | { type: 'tool-call'; id: string; name: string; input: unknown }
-  | { type: 'tool-result'; id: string; name: string; input: unknown; output: unknown }
-  | { type: 'tool-error'; id: string; name: string; input: unknown; error: string }
+  | { type: 'tool-call'; id: string; name: string; input?: unknown }
+  | { type: 'tool-result'; id: string; name: string; input?: unknown; output: unknown }
+  | { type: 'tool-error'; id: string; name: string; input?: unknown; error: string }
 
 export type EditorAiTraceBlock =
   | { type: 'activity'; id: string; status: 'waiting' }
   | { type: 'text'; id: string; text: string }
-  | { type: 'reasoning'; id: string; text: string }
+  /**
+   * 思考段。`startedAt` / `endedAt` 是本进程内的 `performance.now()` 读数，只在
+   * 「这段思考想了多久」这一个用途上存在：起点在第一个 reasoning-delta 打，终点在
+   * 正文或工具开始流出时补。落在块上而不是单独一个 metadata 字段，是为了让同一条
+   * 消息里多次思考各算各的，也省得每个流式消费者各自再记一份计时。
+   */
+  | { type: 'reasoning'; id: string; text: string; startedAt?: number; endedAt?: number }
   | {
     type: 'tool'
     id: string
@@ -68,15 +74,27 @@ function appendTraceTextBlock(
   type: 'text' | 'reasoning',
   id: string,
   text: string,
+  at: number,
 ): EditorAiTraceBlock[] {
   if (!text) return blocks
   const index = blocks.findIndex(block => block.type === type && block.id === id)
-  if (index < 0) return [...blocks, { type, id, text }]
+  if (index < 0) return [...blocks, type === 'reasoning' ? { type, id, text, startedAt: at } : { type, id, text }]
   const current = blocks[index]
   if (!current || current.type !== type) return blocks
   const next = blocks.slice()
   next[index] = { ...current, text: current.text + text }
   return next
+}
+
+/** 思考结束：正文或工具开始流出时，把还开着的思考段封口（之后再来 delta 就不再计时）。 */
+function closeReasoningBlocks(blocks: EditorAiTraceBlock[], at: number): EditorAiTraceBlock[] {
+  let changed = false
+  const next = blocks.map((block) => {
+    if (block.type !== 'reasoning' || block.endedAt !== undefined || block.startedAt === undefined) return block
+    changed = true
+    return { ...block, endedAt: at }
+  })
+  return changed ? next : blocks
 }
 
 function updateTraceToolBlock(
@@ -98,27 +116,36 @@ export function reduceEditorAiTrace(
   blocks: EditorAiTraceBlock[],
   event: EditorAiStreamEvent,
 ): EditorAiTraceBlock[] {
+  // 计时只在两个位置用到：思考段出生、思考段结束。取同一时刻的读数，
+  // 免得一条事件里两处差出几微秒（数值上无所谓，纯为可读）。
+  const now = performance.now()
   if (event.type === 'response-start') {
     return blocks.some(block => block.type === 'activity' && block.id === event.id)
       ? blocks
       : [...blocks, { type: 'activity', id: event.id, status: 'waiting' }]
   }
   if (event.type === 'response-end') {
-    return blocks.filter(block => block.type !== 'activity' || block.id !== event.id)
+    return closeReasoningBlocks(
+      blocks.filter(block => block.type !== 'activity' || block.id !== event.id),
+      now,
+    )
   }
 
   const visibleBlocks = blocks.filter(block => block.type !== 'activity')
   if (event.type === 'text-delta' || event.type === 'reasoning-delta') {
     return appendTraceTextBlock(
-      visibleBlocks,
+      event.type === 'text-delta' ? closeReasoningBlocks(visibleBlocks, now) : visibleBlocks,
       event.type === 'text-delta' ? 'text' : 'reasoning',
       event.id,
       event.text,
+      now,
     )
   }
+  // 工具开始动 = 思考已经结束（下一段思考会开新的块）。
+  const closedBlocks = closeReasoningBlocks(visibleBlocks, now)
   if (event.type === 'tool-input-start') {
     return updateTraceToolBlock(
-      visibleBlocks,
+      closedBlocks,
       event.id,
       () => ({ type: 'tool', id: event.id, name: event.name, status: 'preparing' }),
       block => ({ ...block, name: event.name }),
@@ -126,7 +153,7 @@ export function reduceEditorAiTrace(
   }
   if (event.type === 'tool-input-delta') {
     return updateTraceToolBlock(
-      visibleBlocks,
+      closedBlocks,
       event.id,
       () => ({ type: 'tool', id: event.id, name: '', status: 'preparing', inputText: event.delta }),
       block => ({ ...block, inputText: (block.inputText ?? '') + event.delta }),
@@ -134,7 +161,7 @@ export function reduceEditorAiTrace(
   }
   if (event.type === 'tool-call') {
     return updateTraceToolBlock(
-      visibleBlocks,
+      closedBlocks,
       event.id,
       () => ({ type: 'tool', id: event.id, name: event.name, status: 'running', input: event.input }),
       block => ({ ...block, name: event.name, status: 'running', input: event.input }),
@@ -142,7 +169,7 @@ export function reduceEditorAiTrace(
   }
   if (event.type === 'tool-result') {
     return updateTraceToolBlock(
-      visibleBlocks,
+      closedBlocks,
       event.id,
       () => ({
         type: 'tool', id: event.id, name: event.name, status: 'completed',
@@ -160,7 +187,7 @@ export function reduceEditorAiTrace(
     )
   }
   return updateTraceToolBlock(
-    visibleBlocks,
+    closedBlocks,
     event.id,
     () => ({
       type: 'tool', id: event.id, name: event.name, status: 'failed',
